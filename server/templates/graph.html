@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>{{name}} weather / {{id}}</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="refresh" content="{{refreshtime}}" />
+    <meta http-equiv="expires" content="{{refreshtime * 2}}" />
+    <script src="/static/dygraph.js"></script>
+    <link rel="stylesheet" href="/static/dygraph.css" />
+    <style>
+        .namedate {width:30em; height:1em; margin:4px; float: left; font-size:30px;font-style:bold; text-align: center}
+        .divSquare {width:8em; height:1em; margin:4px; border:1px solid black; float: left;
+                    font-size:40px;font-style:bold;text-align: center; padding:.2em;}
+        .temp { color:white;background-color:#25259a}
+        .hum  { color:white;background-color:#3d9e3d}
+        .pres { color:white;background-color:#800080}
+        .volt { color:white;background-color:#008080}
+        .leftname { width:1em; float:left; font-size:40px;font-style:bold;text-align:center;padding:3em 0}
+        .graph { float:left; width:1000px; height:300px;}
+        .message { font-size:15px;font-style:italic;font-family:arial}
+        input[type=text], input[type=submit] { font-size:20px;font-style:bold; }
+    </style>
+    <script src="/static/jquery.min.js"></script>
+    <script src="/static/moment.min.js"></script>
+    <script src="/static/daterangepicker.min.js"></script>
+    <link rel="stylesheet" href="/static/daterangepicker.css" />
+</head>
+<body>
+<div>
+<div style="float:left;"><a href="/">Home</a></div>
+<form method="GET">
+<div class="namedate"><i><span id="espwname" onClick="startRename()">{{name}}</span>
+<span id="espwrename" style="display:none;">
+<input type=text name="rename" value="{{name}}"/>
+<input type="submit" value="ok"/>
+</span>
+</form>
+/ {{tztime}}</i></div><div style="clear:both"></div>
+<div class="divSquare temp">{{temperature}} °C</div>
+<div class="divSquare hum">{{humidity}} %</div>
+<div style='clear:both'></div>
+{% if pressure %}
+<div class="divSquare pres">{{pressure}} hPa</div>
+{% endif %}
+<div class="divSquare volt">{{v}}V{% if mvs %} / {{vs}} V<sub>sun</sub>{% endif %}</div>
+<div style='clear:both'></div>
+</div>
+<div>
+<div style="text-align:center;width:1000px">
+<div id="countdown" style="float:left">{{refreshtime}}</div>
+<form id="rangeform" method="GET">
+<input type="text" id="dates" name="daterange" value="{{startdate}} - {{enddate}}" />
+</form>
+</div>
+<div>
+<div class="leftname">°C</div><div id="temperature" class="graph"></div>
+<div style="clear:both"></div>
+{% if pressure %}
+<div class="leftname">hPa</div><div id="pressure" class="graph"></div>
+<div style="clear:both"></div>
+{% endif %}
+<div class="leftname">%</div><div id="humidity" class="graph"></div>
+<div style="clear:both"></div>
+<div class="leftname">V</div><div id="battery"  class="graph"></div>
+<div style="clear:both"></div>
+{% if mvs %}
+<div class="leftname">V<sub>sun</sub></div><div id="solar"  class="graph"></div>
+{% endif %}
+<div style="clear:both"></div>
+</div>
+<script type="text/javascript">
+  $(function() {
+   $('#dates').daterangepicker({
+     autoApply: true,
+     opens:'center',
+     locale: { format: 'YYYY-MM-DD' },
+     startDate: '{{startdate}}',
+     endDate: '{{enddate}}',
+     ranges: {
+            'Today': [moment(), moment()],
+            'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+            'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+            'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+            'This Month': [moment().startOf('month'), moment().endOf('month')],
+            'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+     }
+   });
+   $('input[name="daterange"]').on('apply.daterangepicker', function(ev, picker) {
+     $('#rangeform').submit()
+   });
+  });
+  var csv = '';
+  var req = new XMLHttpRequest();
+  req.open("GET", "/csv/{{id}}?daterange={{startdate}} - {{enddate}}", false);
+  req.onreadystatechange = function() { csv = req.responseText; }
+  req.send();
+  labels = ['Time', 'Temperature', 'Humidity', 'Pressure', 'Battery', 'Solar'];
+  gt = new Dygraph( document.getElementById("temperature"), csv,
+    { labels: labels,
+    visibility: [true, false, false, false, false],
+    rollPeriod: 4,
+    showRoller: true,
+    color: "#25259a"
+    });
+  g1 = new Dygraph( document.getElementById("humidity"), csv,
+    { labels: labels,
+    visibility: [false, true, false, false, false],
+    rollPeriod: 4,
+    showRoller: true,
+    color: "#3d9e3d"
+    });
+{% if pressure %}
+  g2 = new Dygraph( document.getElementById("pressure"), csv,
+    { labels: labels,
+    visibility: [false, false, true, false, false],
+    rollPeriod: 4,
+    showRoller: true,
+    color: "#800080"
+    });
+{% endif %}
+  g3 = new Dygraph( document.getElementById("battery"), csv,
+    { labels: labels,
+    visibility: [false, false, false, true, false],
+    rollPeriod: 4,
+    showRoller: true,
+    color: "#008080"
+    });
+{% if mvs %}
+  g4 = new Dygraph( document.getElementById("solar"), csv,
+    { labels: labels,
+    visibility: [false, false, false, false, true],
+    rollPeriod: 4,
+    showRoller: true,
+    color: "#8080f0"
+    });
+{% endif %}
+  function startRename() {
+    var espwn = document.getElementById("espwname");
+    var espwrn= document.getElementById("espwrename");
+    espwn.style.display="none"
+    espwrn.style.display="inline"
+  };
+  setInterval(function() {
+   s = $("#countdown").text()
+   --s
+   $("#countdown").text(s)
+  }, 1000);
+</script>
+<hr/>
+<h2><i>IP: {{ip}}</i><h2>
+{% if message: %}
+<span class=message>Message: {{message}}</span>
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,6 @@
+*.csv
+*.sqlite3
+*.swp
+__pycache__
+log*
+*.logrotate
