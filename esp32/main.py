@@ -6,7 +6,7 @@ import BME280
 import sht30
 
 def run():
-    wdt = machine.WDT(timeout=DEEP_SLEEP)
+    wdt = machine.WDT(timeout=DEEP_SLEEP*2)
     while True:
         tstump = '%s-%.2d-%.2d %.2d:%.2d:%.2d' % time.localtime()[0:6]
         config = { "sleep": DEEP_SLEEP, "ts_cfg": tstump}
@@ -25,15 +25,7 @@ def run():
         
 def measure():
     tstump = '%s-%.2d-%.2d %.2d:%.2d:%.2d' % time.localtime()[0:6]
-    lvlpin = machine.ADC(machine.Pin(LVL_PIN))
-    lvlpin.width(lvlpin.WIDTH_12BIT)
-    lvlpin.atten(lvlpin.ATTN_11DB)
-    data = {'ts': tstump, 'v':lvlpin.read_u16()/10000}
-    if LVLSUN_PIN :
-        sunpin = machine.ADC(machine.Pin(LVLSUN_PIN))
-        sunpin.width(lvlpin.WIDTH_12BIT)
-        sunpin.atten(lvlpin.ATTN_11DB)
-        data['vs'] = sunpin.read_u16()/1000
+    data = {'ts': tstump, 'v':read_adc(LVL_PIN), 'vs':read_adc(LVLSUN_PIN), 't':0, 'h':0, 'p':0}
     try:
         sht = sht30.SHT30(I2C_SCL, I2C_SDA)
         if sht.is_present():
@@ -44,11 +36,22 @@ def measure():
                 bme = BME280.BME280(i2c=i2c)
                 (data['t'], data['h'], data['p']) = (bme.temperature, bme.humidity, bme.pressure)
             except Exception as e:
-                msg = "No measure " + e
-                print (msg)
-                data['m'] = msg
+                data['m'] = "No measure"
+                print (data['m'])
     except Exception as e:
-        print("Mesure Exception: " + e)    
+        print("Measure Exception")
+        print(e)
     return data
+
+def read_adc(pin):
+    res=0
+    try:
+        p=machine.ADC(machine.Pin(pin))
+        p.width(p.WIDTH_12BIT)
+        p.atten(p.ATTN_11DB)
+        res=p.read_u16()/10000
+    except Exception as e:
+        print(e)
+    return res
         
 run()
