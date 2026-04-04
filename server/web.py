@@ -1,277 +1,160 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-import argparse
-import logging
-import configparser
-import os, re
-import sqlite3
-import jinja2
-
+import argparse, configparser, logging, os, re, sqlite3, sys
+from contextlib import contextmanager
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from aiohttp import web
-
-from pprint import pprint as pp
-
 from multiprocessing import Process
+
+import jinja2
+from aiohttp import web
+from dateutil.relativedelta import relativedelta
 import listenudp
 
-DEF_RANGE = 7  # in days!!!
+DEF_RANGE = 7
+VOLT_WIN  = "-60 day"
+VBAT, VSOL = 4.2, 6.0
 
-lg = logging.getLogger(__name__)
-args = None
-cfg = None
-env = jinja2.Environment()
-loader = jinja2.FileSystemLoader("templates")
+lg  = logging.getLogger(__name__)
+env = jinja2.Environment(loader=jinja2.FileSystemLoader("templates"))
 
+# -- helpers -----------------------------------------------------------------
 
-def main():
-    global args, cfg
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-c",
-        "--config",
-        dest="config",
-        default="config.cfg",
-        help="Config file. Default: config.cfg",
-    )
-    args = parser.parse_args()
+def dict_factory(cur, row):
+    return {c[0]: (row[i] if row[i] != "None" else "") for i, c in enumerate(cur.description)}
 
-    config = configparser.ConfigParser()
-    config.read(args.config)
-    cfg = config["default"]
+@contextmanager
+def get_db(path):
+    dbh = sqlite3.connect(path)
+    dbh.row_factory = dict_factory
+    try:    yield dbh
+    finally: dbh.close()
 
-    logging.basicConfig(
-        level=cfg["debug"],
-        format="%(asctime)s %(name)s.%(lineno)s %(levelname)s: %(message)s",
-    )
+def db_path(cfg, sid):  return os.path.join(cfg["dbdir"], f"{sid}.sqlite3")
+def cfg(req):           return req.app["cfg"]
+def sid(req):           return req.match_info["id"]
+def tmpl(name):         return env.get_template(name)
+def html(body):         return web.Response(content_type="text/html", charset="utf-8", body=body)
 
-    app = web.Application()
-    app.add_routes(
-        [
-            web.get("/", index),
-            web.get(r"/csv/{id}", csv_get),
-            web.get(r"/graph/{id}", graph),
-            web.post(r"/id/{id}", store),
-            web.get("/favicon.ico", favicon),
-            web.static("/static", "static"),
-        ]
-    )
+def ensure_db(path):
+    if os.path.isfile(path): return
+    with sqlite3.connect(path) as db:
+        db.execute("""CREATE TABLE data (timedate text primary key, ip text,
+                      temperature real, humidity real, pressure real,
+                      voltage real, voltagesun real, message text)""")
+        db.execute("CREATE TABLE params (name text primary key, value text)")
+        db.commit()
 
-    p = Process(target=listenudp.main)
-    p.start()
-    lg.error("Web running on http://%s:%s" % (cfg["host"], cfg["port"]))
-    web.run_app(app, host=cfg["host"], port=int(cfg["port"]))
+def get_range(request):
+    raw = request.query.get("daterange", "")
+    m   = re.match(r"(\d{4}-\d\d-\d\d).-.(\d{4}-\d\d-\d\d)", raw) if raw else None
+    if m: return m.groups()
+    now = datetime.now()
+    return ((now - relativedelta(days=DEF_RANGE)).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
 
+def max_voltages(dbh):
+    return dbh.execute(f"SELECT max(voltage) AS mv, max(voltagesun) AS mvs FROM data "
+                       f"WHERE timedate > datetime(date('now'), '{VOLT_WIN}')").fetchone()
+
+def brief_data(fname):
+    with get_db(fname) as db:
+        row   = db.execute("""SELECT round(temperature,1) AS temperature,
+                      CAST(round(humidity,0) AS int) AS humidity,
+                      CAST(round(pressure,0) AS int) AS pressure,
+                      CAST(round(voltage,0)  AS int) AS voltage,
+                      CAST(round(voltagesun,0) AS int) AS voltagesun,
+                      ip, message, datetime(timedate,'localtime') AS tztime
+                      FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
+        maxv  = max_voltages(db)
+        params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
+
+    row["v"]   = round(row["voltage"]    / maxv["mv"]  * VBAT, 2) if maxv["mv"]  and row["voltage"]    else 0
+    row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * VSOL, 2) if maxv["mvs"] and row["voltagesun"] else 0
+    row["mvs"] = maxv["mvs"]
+    row.update(params)
+    row.setdefault("name", "_new_")
+
+    sleep = int(row.get("sleep", 900_000))
+    row["period"] = (sleep / 1000 if sleep > 1000 else sleep) / (10 if int(row.get("fake_sleep", 0)) else 1)
+    if not row.get("Vsun", True): row["mvs"] = 0
+    return row
+
+# -- route handlers ----------------------------------------------------------
 
 async def favicon(request):
     res = web.FileResponse("static/favicon.ico")
     res.headers["Cache-Control"] = "max-age=10000"
     return res
 
-
 async def store(request):
-    sensor_id = request.match_info["id"]
-    lg.debug("New data from %s" % sensor_id)
-    jdata = await request.json()
-    first = jdata["measures"][0].split(",")[0]
-    last = jdata["measures"][-1].split(",")[0]
-    lg.info("Post %s rows from: %s to %s (UTC)" % (len(jdata["measures"]), first, last))
-    dbname = cfg["dbdir"] + "/" + sensor_id + ".sqlite3"
-    if not os.path.isfile(dbname):
-        dbh = sqlite3.connect(dbname)
-        c = dbh.cursor()
-        c.execute(
-            """CREATE TABLE data ( timedate text primary key, ip text,
-                                        temperature real, humidity real,
-                                        pressure real, voltage real, voltagesun real,
-                                        message text)"""
-        )
-        c.execute("CREATE TABLE params (name text primary key, value text)")
-        dbh.commit()
-        dbh.close()
-    dbh = sqlite3.connect(dbname)
-    c = dbh.cursor()
-    for m in jdata["measures"]:
-        vals = m.split(",")
-        vals.insert(1, request.remote)
-        try:
-            c.execute("insert or replace into data values(?,?,?,?,?,?,?,?)", vals)
-        except Exception as e:
-            lg.error("Insert error: %s" % e)
-            lg.error("Data row: %s" % m)
-
-    dbh.commit()
-    dbh.close()
+    measures = (await request.json())["measures"]
+    path = db_path(cfg(request), sid(request))
+    ensure_db(path)
+    lg.info(f"Post {len(measures)} rows {measures[0].split(',')[0]} → {measures[-1].split(',')[0]} UTC")
+    with sqlite3.connect(path) as db:
+        for m in measures:
+            vals = m.split(","); vals.insert(1, request.remote)
+            try:    db.execute("INSERT OR REPLACE INTO data VALUES(?,?,?,?,?,?,?,?)", vals)
+            except Exception as e: lg.error(f"Insert error: {e} | row: {m}")
+        db.commit()
     return web.Response(text="OK")
 
-
 async def graph(request):
-    sensor_id = request.match_info["id"]
-    lg.debug("Graph for %s" % sensor_id)
-    template = loader.load(env, "graph.html")
-    dbname = cfg["dbdir"] + "/" + sensor_id + ".sqlite3"
-    if not os.path.isfile(dbname):
-        raise web.HTTPNotFound(text="Not here.")
-    if "rename" in request.query.keys():
-        lg.debug("Rename %s to %s" % (sensor_id, request.query["rename"]))
-        dbh = sqlite3.connect(dbname)
-        dbh.execute(
-            "insert or replace into params values (?, ?)",
-            ("name", request.query["rename"]),
-        )
-        dbh.commit()
-        dbh.close()
-        raise web.HTTPFound(location="/graph/" + sensor_id)
-    info = brief_data(dbname)
-    info["id"] = sensor_id
-    (info["startdate"], info["enddate"]) = get_range(request)
-    info["refreshtime"] = int(info["period"] / 2)
-    return web.Response(
-        content_type="text/html", charset="utf-8", body=template.render(info)
-    )
-
-
-def get_range(request):
-    daterange = None
-    if "daterange" in request.query:
-        try:
-            lg.debug("Daterange: %s" % request.query["daterange"])
-            r = re.match(
-                r"(\d{4}-\d\d-\d\d).-.(\d{4}-\d\d-\d\d)", request.query["daterange"]
-            )
-            daterange = r.groups()
-        except Exception as e:
-            lg.debug("Daterange error (%s) %s" % (request.query["daterange"], e))
-            daterange = None
-
-    if not daterange:
-        lg.debug("Use default date range")
-        now = datetime.now()
-        start = now - relativedelta(days=DEF_RANGE)
-        daterange = (start.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
-    return daterange
-
+    path = db_path(cfg(request), sid(request))
+    if not os.path.isfile(path): raise web.HTTPNotFound(text="Not here.")
+    if "rename" in request.query:
+        with sqlite3.connect(path) as db:
+            db.execute("INSERT OR REPLACE INTO params VALUES(?,?)", ("name", request.query["rename"]))
+            db.commit()
+        raise web.HTTPFound(location=f"/graph/{sid(request)}")
+    info = brief_data(path)
+    info |= {"id": sid(request), "refreshtime": int(info["period"] / 2)}
+    info["startdate"], info["enddate"] = get_range(request)
+    return html(tmpl("graph.html").render(info))
 
 async def index(request):
-    lg.debug("Get sensors list")
-    template = loader.load(env, "index.html")
     sensors = {}
-    for name in os.listdir(cfg["dbdir"]):
-        if name.endswith(".sqlite3"):
-            try:
-                sensor_id = name.strip(".sqlite3")
-                info = brief_data(cfg["dbdir"] + "/" + name)
-                sensors[sensor_id] = info
-            except Exception as e:
-                lg.error("Bad data in %s: %s" % (name, e))
-    return web.Response(
-        content_type="text/html",
-        charset="utf-8",
-        body=template.render({"sensors": sensors, "refreshtime": 450}),
-    )
-
+    for name in os.listdir(cfg(request)["dbdir"]):
+        if not name.endswith(".sqlite3"): continue
+        try:    sensors[name.removesuffix(".sqlite3")] = brief_data(os.path.join(cfg(request)["dbdir"], name))
+        except Exception as e: lg.error(f"Bad data in {name}: {e}")
+    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": 450}))
 
 async def csv_get(request):
-    sensor_id = request.match_info["id"]
-    lg.debug("Get CSV for %s" % sensor_id)
-    (startdate, enddate) = get_range(request)
-    dbh = sqlite3.connect(cfg["dbdir"] + "/" + sensor_id + ".sqlite3")
-    dbh.row_factory = dict_factory
-    res = dbh.execute(
-        """select max(voltage) as mv, max(voltagesun) as mvs from data
-                        where timedate > datetime(date('now'), '-60 day')"""
-    )
-    maxv = res.fetchone()
-    v = 4.2 / maxv["mv"] if maxv["mv"] else 0
-    vs = 6 / maxv["mvs"] if maxv["mvs"] else 0
-    res = dbh.execute(
-        """select temperature, humidity, pressure,
-                         voltage*? as voltage,
-                         voltagesun*? as voltagesun,
-                         datetime(timedate, 'localtime') as tztime from data
-                         where timedate >= datetime(?, 'localtime') and
-                               timedate <= datetime(datetime(?, 'localtime'), '1 day')
-                      order by timedate""",
-        (v, vs, startdate, enddate),
-    )
-    rows = res.fetchall()
-    txt = ""
-    for row in rows:
-        txt = (
-            txt
-            + "%(tztime)s,%(temperature)s,%(humidity)s,%(pressure)s,%(voltage)s,%(voltagesun)s\n"
-            % row
-        )
-    dbh.close()
-    return web.Response(text=txt, content_type="text/csv")
+    startdate, enddate = get_range(request)
+    with get_db(db_path(cfg(request), sid(request))) as db:
+        maxv = max_voltages(db)
+        v, vs = (VBAT / maxv["mv"] if maxv["mv"] else 0), (VSOL / maxv["mvs"] if maxv["mvs"] else 0)
+        rows = db.execute("""SELECT temperature, humidity, pressure,
+                      voltage*? AS voltage, voltagesun*? AS voltagesun,
+                      datetime(timedate,'localtime') AS tztime FROM data
+                      WHERE timedate >= datetime(?,'localtime')
+                        AND timedate <= datetime(datetime(?,'localtime'),'1 day')
+                      ORDER BY timedate""", (v, vs, startdate, enddate)).fetchall()
+    txt = "\n".join("{tztime},{temperature},{humidity},{pressure},{voltage},{voltagesun}".format(**r) for r in rows)
+    return web.Response(text=txt + "\n", content_type="text/csv")
 
+# -- startup -----------------------------------------------------------------
 
-def brief_data(fname):
-    dbh = sqlite3.connect(fname)
-    dbh.row_factory = dict_factory
-    res = dbh.execute(
-        """select round(data.temperature,1) as temperature,
-                                cast( round(data.humidity,0) as int) as humidity,
-                                cast( round(data.pressure,0) as int) as pressure,
-                                cast( round(data.voltage,0) as int) as voltage,
-                                cast( round(data.voltagesun,0) as int) as voltagesun,
-                                data.ip, data.message,
-                                datetime(data.timedate, 'localtime') as tztime
-                           from data
-                          order by timedate desc limit 1"""
-    )
-    row = res.fetchone()
-    res = dbh.execute(
-        """select max(voltage) as mv, max(voltagesun) as mvs from data
-                        where timedate > datetime(date('now'), '-60 day')"""
-    )
-    maxv = res.fetchone()
-    row["v"] = (
-        round(row["voltage"] / maxv["mv"] * 4.2, 2)
-        if maxv["mv"] and row["voltage"]
-        else 0
-    )
-    row["vs"] = (
-        round(row["voltagesun"] / maxv["mvs"] * 6, 2)
-        if maxv["mvs"] and row["voltagesun"]
-        else 0
-    )
-    row["mvs"] = maxv["mvs"]
-
-    res = dbh.execute("""select name, value from params""")
-    rows = res.fetchall()
-    for r in rows:
-        row[r["name"]] = r["value"]
-    row["name"] = row.get("name", "_new_")
-    lg.debug("Brief data: %s" % row)
-
-    i = int(row.get("sleep", 900000))
-    row["period"] = i / 1000 if i > 1000 else i
-    if int(row.get("fake_sleep", 0)):
-        row["period"] = row["period"] / 10
-
-    if not row.get("Vsun", True):
-        row["mvs"] = 0
-
-    dbh.close()
-    lg.debug("Corected brief data %s: %s" % (fname, row))
-    return row
-
-
-def dict_factory(cursor, row):
-    d = {}
-    for idx, col in enumerate(cursor.description):
-        d[col[0]] = row[idx] if row[idx] != "None" else ""
-    return d
-
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", default="config.cfg")
+    args   = parser.parse_args()
+    config = configparser.ConfigParser(); config.read(args.config)
+    c = config["default"]
+    logging.basicConfig(level=c["debug"],
+                        format="%(asctime)s %(name)s.%(lineno)s %(levelname)s: %(message)s")
+    Process(target=listenudp.main).start()
+    app = web.Application()
+    app["cfg"] = c
+    app.add_routes([web.get("/", index), web.get(r"/csv/{id}", csv_get),
+                    web.get(r"/graph/{id}", graph), web.post(r"/id/{id}", store),
+                    web.get("/favicon.ico", favicon), web.static("/static", "static")])
+    lg.error(f"Web running on http://{c['host']}:{c['port']}")
+    web.run_app(app, host=c["host"], port=int(c["port"]))
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("Interrupted")
-        sys.exit(0)
+    try:    main()
+    except KeyboardInterrupt: print("Interrupted"); sys.exit(0)
 
 # vim: ai ts=4 sts=4 et sw=4 ft=python
