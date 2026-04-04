@@ -1,27 +1,15 @@
-all: help
-help:
-	$(info $(HELPSTR))
-	@true
-run:
-	docker run -v ${PWD}:/serv --restart always -dit --network host --name espMetheo esp-metheo
+NAME  = espMetheo
+IMAGE = esp-metheo
 
-run-bridge:
-	docker run -v ${PWD}:/serv --restart always -dit -p 8088:8088 -p 1883:1883/udp --name espMetheo esp-metheo
-restart: stop rm build run
-stop:
-	docker container stop espMetheo
-rm:
-	docker container rm espMetheo
-attach:
-	docker container attach espMetheo
 define HELPSTR
 run         -- run with host network
 run-bridge  -- run with bridge network
 restart     -- stop, remove, rebuild and start
-stop        -- stop
+stop        -- stop container
 rm          -- remove container
-attach      -- attch to running container
+attach      -- attach to running container
 endef
+export HELPSTR
 
 define LOGROTATE
 ${PWD}/log
@@ -33,8 +21,18 @@ ${PWD}/log
 endef
 export LOGROTATE
 
+all: help
+help: ; @echo "$$HELPSTR"
 build:
-	docker build -t esp-metheo .
-	@echo "$$LOGROTATE" >espMetheo.logrotate
+	docker build -t $(IMAGE) .
+	@echo "$$LOGROTATE" >$(NAME).logrotate
+run:
+	docker run -v ${PWD}:/serv --restart always -dit --network host --name $(NAME) $(IMAGE)
+run-bridge:
+	docker run -v ${PWD}:/serv --restart always -dit -p 8088:8088 -p 1883:1883/udp --name $(NAME) $(IMAGE)
+restart: stop rm build run
+stop:   ; docker container stop   $(NAME)
+rm:     ; docker container rm     $(NAME)
+attach: ; docker container attach $(NAME)
 
 # vim: noet
