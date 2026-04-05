@@ -6,11 +6,9 @@
 <meta http-equiv="refresh" content="{{refreshtime}}">
 <meta http-equiv="expires" content="{{refreshtime * 2}}">
 <script src="/static/dygraph.js"></script>
-<script src="/static/jquery.min.js"></script>
-<script src="/static/moment.min.js"></script>
-<script src="/static/daterangepicker.min.js"></script>
+<script src="/static/flatpickr.min.js"></script>
 <link rel="stylesheet" href="/static/dygraph.css">
-<link rel="stylesheet" href="/static/daterangepicker.css">
+<link rel="stylesheet" href="/static/flatpickr.min.css">
 <style>
   .namedate{width:30em;height:1em;margin:4px;float:left;font-size:30px;font-weight:bold;text-align:center}
   .box{width:8em;height:1em;margin:4px;border:1px solid black;float:left;font-size:40px;font-weight:bold;text-align:center;padding:.2em;color:white}
@@ -61,20 +59,15 @@
   <div class="cf"></div>
 </div>
 <script>
-  $('#dates').daterangepicker({
-    autoApply:true, opens:'center',
-    locale:{format:'YYYY-MM-DD'},
-    startDate:'{{startdate}}', endDate:'{{enddate}}',
-    ranges:{
-      'Today':[moment(),moment()],
-      'Yesterday':[moment().subtract(1,'days'),moment().subtract(1,'days')],
-      'Last 7 Days':[moment().subtract(6,'days'),moment()],
-      'Last 30 Days':[moment().subtract(29,'days'),moment()],
-      'This Month':[moment().startOf('month'),moment().endOf('month')],
-      'Last Month':[moment().subtract(1,'month').startOf('month'),moment().subtract(1,'month').endOf('month')]
+  flatpickr("#dates", {
+    mode: "range",
+    dateFormat: "Y-m-d",
+    defaultDate: ['{{startdate}}', '{{enddate}}'],
+    locale: { rangeSeparator: ' - ' },
+    onClose: function(selectedDates) {
+      if (selectedDates.length === 2) document.getElementById("rangeform").submit();
     }
   });
-  $('input[name="daterange"]').on('apply.daterangepicker', function(){ $('#rangeform').submit() });
 
   var req = new XMLHttpRequest();
   req.open("GET", "/csv/{{id}}?daterange={{startdate}} - {{enddate}}", false);
@@ -93,14 +86,17 @@
   {% endif %}
   var g3 = dg("battery",     "#008080", [false,false,false,true, false]);
   {% if mvs %}
-  var g4 = dg("solar",       "#8080f0", [false,false,false,false,true ]);
+  var g4 = dg("solar",       "#8080f0", [false,false,false,false,true]);
   {% endif %}
 
   function startRename() {
     document.getElementById("espwname").style.display   = "none";
     document.getElementById("espwrename").style.display = "inline";
   }
-  setInterval(function(){ var s=$("#countdown"); s.text(s.text()-1) }, 1000);
+  setInterval(function(){
+    var el = document.getElementById("countdown");
+    el.textContent = el.textContent - 1;
+  }, 1000);
 </script>
 <hr>
 <h2><i>IP: {{ip}}</i></h2>
