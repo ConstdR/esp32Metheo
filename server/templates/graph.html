@@ -79,14 +79,64 @@
     return new Dygraph(document.getElementById(id), csv,
       {labels:labels, visibility:vis, rollPeriod:4, showRoller:true, color:col});
   }
-  var gt = dg("temperature", "#25259a", [true, false,false,false,false]);
-  var g1 = dg("humidity",    "#3d9e3d", [false,true, false,false,false]);
+
+  var gt = new Dygraph(document.getElementById("temperature"), csv,
+    { labels: labels,
+      visibility: [true,false,false,false,false],
+      rollPeriod: 4, showRoller: true, color: "#1b5e20",
+      underlayCallback: function(canvas, area, g) {
+        [{y: 0, color: 'rgba(0,0,255,0.5)'},
+         {y: 20, color: 'rgba(255,0,0,0.5)'}].forEach(function(line) {
+          var yPx = g.toDomYCoord(line.y);
+          canvas.beginPath();
+          canvas.strokeStyle = line.color;
+          canvas.lineWidth = 1.5;
+          canvas.setLineDash([4, 4]);
+          canvas.moveTo(area.x, yPx);
+          canvas.lineTo(area.x + area.w, yPx);
+          canvas.stroke();
+          canvas.setLineDash([]);
+        });
+      }
+    });
+
+  var g1 = new Dygraph(document.getElementById("humidity"), csv,
+    { labels: labels,
+      visibility: [false,true,false,false,false],
+      rollPeriod: 4, showRoller: true, color: "#3d9e3d",
+      underlayCallback: function(canvas, area, g) {
+        var yPx = g.toDomYCoord(35);
+        canvas.beginPath();
+        canvas.strokeStyle = 'rgba(0,0,255,0.5)';
+        canvas.lineWidth = 1.5;
+        canvas.setLineDash([4, 4]);
+        canvas.moveTo(area.x, yPx);
+        canvas.lineTo(area.x + area.w, yPx);
+        canvas.stroke();
+        canvas.setLineDash([]);
+      }
+    });
   {% if pressure %}
-  var g2 = dg("pressure",    "#800080", [false,false,true, false,false]);
+  var g2 = new Dygraph(document.getElementById("pressure"), csv,
+    { labels: labels,
+      visibility: [false,false,true,false,false],
+      rollPeriod: 4, showRoller: true, color: "#800080",
+      underlayCallback: function(canvas, area, g) {
+        var yPx = g.toDomYCoord(1013);
+        canvas.beginPath();
+        canvas.strokeStyle = 'rgba(0,0,255,0.5)';
+        canvas.lineWidth = 1.5;
+        canvas.setLineDash([4, 4]);
+        canvas.moveTo(area.x, yPx);
+        canvas.lineTo(area.x + area.w, yPx);
+        canvas.stroke();
+        canvas.setLineDash([]);
+      }
+    });
   {% endif %}
   var g3 = dg("battery",     "#008080", [false,false,false,true, false]);
   {% if mvs %}
-  var g4 = dg("solar",       "#8080f0", [false,false,false,false,true]);
+  var g4 = dg("solar",       "#8080f0", [false,false,false,false,true ]);
   {% endif %}
 
   function startRename() {
