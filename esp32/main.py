@@ -8,7 +8,6 @@ import sht30
 from machine import Pin,PWM
 
 def run():
-    # wdt = machine.WDT(timeout=DEEP_SLEEP*2)
     while True:
         tstump = '%s-%.2d-%.2d %.2d:%.2d:%.2d' % time.localtime()[0:6]
         config = { "sleep": DEEP_SLEEP, "ts_cfg": tstump}
@@ -22,9 +21,7 @@ def run():
         except Exception as e:
             print("Publish exception: %s" % e)
         print("Deepsleep for %s sec" % str(DEEP_SLEEP/1000))
-        # deepsleep(DEEP_SLEEP)
-        time.sleep(5)
-        servo()
+        deepsleep(DEEP_SLEEP)
         
 def measure():
     tstump = '%s-%.2d-%.2d %.2d:%.2d:%.2d' % time.localtime()[0:6]
@@ -57,20 +54,4 @@ def read_adc(pin):
         print(e)
     return res
 
-
-def servo():
-    sg90 = PWM(Pin(22, mode=Pin.OUT), freq=50, duty=123 )
-    d = sg90.duty()
-    for i in range(0, 2):
-        if d == 23:
-            d = 123
-        else:
-            d= 23
-        sg90.duty(d)
-        time.sleep(1)
-        print(sg90.duty())   
-    sg90.duty(73)
-    time.sleep(1)
-    print(sg90.duty())
-    sg90.deinit()
 run()
