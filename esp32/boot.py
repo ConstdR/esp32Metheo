@@ -16,13 +16,11 @@ cfg={'essid':'essid', 'pswd':'pswd', 'tz':TZ, 'message':"No config", 'ap':0}
 
 def blink(freq=0):
     pled=machine.Pin(LED_PIN, machine.Pin.OUT)
-    pf  =machine.Pin(M_PIN, machine.Pin.OUT)
     try: freq = float(freq)
     except: freq = 0
     print("Blinking %s" % freq)
     while True:
         pled.value( 0 if pled.value() else 1 )
-        pf.value(pled.value())
         time.sleep( random.randint(0,50)/100 if freq==0 else 1/(freq*2) )
 
 def get_cfg():
