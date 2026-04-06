@@ -7,6 +7,7 @@ run-bridge  -- run with bridge network
 restart     -- stop, remove, rebuild and start
 stop        -- stop container
 rm          -- remove container
+shell       -- run shell on running container
 attach      -- attach to running container
 endef
 export HELPSTR
@@ -31,8 +32,9 @@ run:
 run-bridge:
 	docker run -v ${PWD}:/serv --restart always -dit -p 8088:8088 -p 1883:1883/udp --name $(NAME) $(IMAGE)
 restart: stop rm build run
-stop:   ; docker container stop   $(NAME)
-rm:     ; docker container rm     $(NAME)
+stop:   ; -docker container stop   $(NAME)
+rm:     ; -docker container rm     $(NAME)
 attach: ; docker container attach $(NAME)
+shell:  ; docker exec -it $(NAME) /bin/sh
 
 # vim: noet
