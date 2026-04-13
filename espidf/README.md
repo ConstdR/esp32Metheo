@@ -1,8 +1,8 @@
-# Weather Station — ESP32 + BME280 + MQTT-UDP
+# Weather Station — ESP32 + BME280 + MQTT-UDP (ESP-IDF)
 
-Проект метеостанции на ESP32 с сенсором BME280. Данные отправляются
-в локальную сеть через **MQTT-UDP** (UDP broadcast, порт 1883) — без
-брокера, без TCP.
+Метеостанция на ESP32 с сенсором BME280. Данные отправляются в локальную
+сеть через **MQTT-UDP** (UDP broadcast, порт 1883) и принимаются сервером
+из каталога `../server/`.
 
 ---
 
@@ -17,39 +17,40 @@ SDA    →    GPIO 21
 SCL    →    GPIO 22
 SDO    →    GND       ← адрес 0x76
 CSB    →    3.3V      ← принудительно I2C режим
+
+Делитель напряжения питания:
+BAT(+) → R1(110k) → GPIO 34 → R2(110k) → GND
+
+LED индикатор:
+GPIO 5 → резистор 220Ω → LED(+) → LED(-) → GND
 ```
 
 > Если SDO подключён к 3.3V — адрес 0x77.
-> Измени `BME280_ADDR` в `sensor.c` на `BME280_I2C_ADDR_SEC`.
+> Измени `BME280_ADDR` в `sensor.c` на `BME280_I2C_ADDRESS_DEFAULT + 1`.
 
 ---
 
 ## Быстрый старт
 
-### 1. Настройка ESP-IDF (Gentoo / Linux)
+### 1. Активация ESP-IDF
 
 ```bash
-# Активация окружения (нужно каждый раз в новом терминале)
 . ~/esp/esp-idf/export.sh
 ```
 
-### 2. Настройка Wi-Fi
-
-Открой `main/main.c` и измени:
-
-```c
-#define WIFI_SSID      "your_ssid"
-#define WIFI_PASSWORD  "your_password"
-```
-
-### 3. Добавить зависимость BME280
+### 2. Настройка параметров
 
 ```bash
-cd weather_station
-idf.py add-dependency "espressif/bme280^0.0.1"
+cd espidf
+idf.py menuconfig
 ```
 
-### 4. Сборка и прошивка
+В разделе **Weather Station Configuration** задай:
+- Wi-Fi SSID и пароль
+- Интервал deep sleep (по умолчанию 15 минут)
+- GPIO для LED (по умолчанию 5)
+
+### 3. Сборка и прошивка
 
 ```bash
 idf.py build
@@ -58,8 +59,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 > **Gentoo**: если порт недоступен без sudo:
 > ```bash
-> sudo gpasswd -a $USER uucp
-> newgrp uucp
+> sudo gpasswd -a $USER uucp && newgrp uucp
 > ```
 
 ---
@@ -67,48 +67,62 @@ idf.py -p /dev/ttyUSB0 flash monitor
 ## Структура проекта
 
 ```
-weather_station/
+espidf/
 ├── CMakeLists.txt
-├── listen_mqttudp.py       ← слушатель на сервере (Python)
-├── README.md
+├── sdkconfig.defaults       ← шаблон настроек
+├── listen_mqttudp.py        ← простой отладочный слушатель
 └── main/
     ├── CMakeLists.txt
-    ├── idf_component.yml   ← зависимость espressif/bme280
-    ├── main.c              ← точка входа, задача FreeRTOS
-    ├── wifi.c / wifi.h     ← Wi-Fi Station с авто-переподключением
-    ├── sensor.c / sensor.h ← I2C + BME280 драйвер
-    └── mqttudp_client.c / mqttudp_client.h  ← UDP PUBLISH
+    ├── Kconfig.projbuild    ← параметры menuconfig
+    ├── idf_component.yml    ← зависимости (bme280, i2c_bus)
+    ├── main.c               ← точка входа, NTP, deep sleep
+    ├── wifi.c / wifi.h      ← Wi-Fi Station
+    ├── sensor.c / sensor.h  ← BME280 + ADC напряжения
+    └── mqttudp_client.c/h   ← MQTT-UDP отправка
 ```
 
 ---
 
-## MQTT топики
+## Поведение устройства
 
-| Топик                  | Значение          | Пример  |
-|------------------------|-------------------|---------|
-| `weather/temperature`  | Температура, °C   | `23.4`  |
-| `weather/humidity`     | Влажность, %      | `48.2`  |
-| `weather/pressure`     | Давление, hPa     | `1013.2`|
+```
+boot/wake → Wi-Fi → NTP (раз в 24ч) → BME280 → отправка → deep sleep
+```
 
-Интервал отправки: **30 секунд** (меняется через `SENSOR_INTERVAL_MS` в `main.c`).
+- **Deep sleep**: 15 минут (настраивается через menuconfig)
+- **NTP**: синхронизация раз в сутки, время хранится в RTC memory
+- **LED**: горит во время измерения и отправки данных
+- **Device ID**: MAC адрес Wi-Fi интерфейса
 
 ---
 
-## Приём данных на сервере
+## Формат данных MQTT-UDP
 
+- **Топик**: `weather/<device_id>` (например `weather/ac67b2386628`)
+- **Payload**:
+
+```json
+{"ts":"2026-04-13T10:00:00","t":21.9,"h":24.7,"p":976.6,"v":3.85}
+```
+
+| Поле | Описание         | Единица |
+|------|------------------|---------|
+| `ts` | Время UTC        | ISO 8601 |
+| `t`  | Температура      | °C      |
+| `h`  | Влажность        | %       |
+| `p`  | Давление         | hPa     |
+| `v`  | Напряжение питания | В     |
+
+---
+
+## Приём данных
+
+Для отладки — простой слушатель:
 ```bash
 python3 listen_mqttudp.py
 ```
 
-Вывод:
-```
-Listening on UDP :1883 ...
-Time          From              Topic                         Value
-──────────────────────────────────────────────────────────────────
-14:05:32      192.168.1.42      weather/temperature           23.4
-14:05:32      192.168.1.42      weather/humidity              48.2
-14:05:32      192.168.1.42      weather/pressure              1013.2
-```
+Для сохранения в БД — используй `../server/listenudp.py`.
 
 ---
 
@@ -116,8 +130,9 @@ Time          From              Topic                         Value
 
 | Проблема | Решение |
 |---|---|
-| `BME280 init failed` | Проверь провода SDA/SCL, питание 3.3V |
-| Нет данных в сети | Проверь что сервер в той же подсети |
+| `BME280 init failed` | Проверь провода SDA=21, SCL=22, питание 3.3V |
+| `Brownout detector` | Используй качественный кабель или блок питания 1A+ |
+| Нет данных в сети | Проверь что сервер в той же подсети, порт 1883 |
 | `/dev/ttyUSB0` не найден | `ls /dev/ttyUSB* /dev/ttyACM*` |
 | Ошибка прав на порт | `sudo gpasswd -a $USER uucp && newgrp uucp` |
 | CH340 не определяется | `sudo modprobe ch341` |
