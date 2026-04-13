@@ -1,0 +1,12 @@
+# ESP-IDF build artifacts
+build/
+managed_components/
+dependencies.lock
+
+# sdkconfig содержит WiFi credentials — не коммитить!
+sdkconfig
+sdkconfig.old
+
+# Python
+__pycache__/
+*.pyc

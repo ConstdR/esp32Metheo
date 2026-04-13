@@ -1,0 +1,8 @@
+# Defaults for Weather Station
+# Copy this file, fill in your credentials, then run: idf.py menuconfig
+# DO NOT commit sdkconfig to git — it contains your WiFi password!
+
+CONFIG_WIFI_SSID="your_ssid"
+CONFIG_WIFI_PASSWORD="your_password"
+CONFIG_SLEEP_MINUTES=15
+CONFIG_LED_GPIO=5

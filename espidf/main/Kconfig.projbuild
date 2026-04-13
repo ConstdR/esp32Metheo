@@ -1,0 +1,28 @@
+menu "Weather Station Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "your_ssid"
+        help
+            SSID of the WiFi network to connect to.
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "your_password"
+        help
+            Password of the WiFi network.
+
+    config SLEEP_MINUTES
+        int "Deep sleep interval (minutes)"
+        default 15
+        range 1 60
+        help
+            How long to sleep between measurements.
+
+    config LED_GPIO
+        int "LED GPIO pin"
+        default 5
+        help
+            GPIO pin number for the status LED.
+
+endmenu

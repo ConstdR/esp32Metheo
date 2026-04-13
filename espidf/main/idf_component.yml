@@ -1,0 +1,7 @@
+dependencies:
+  espressif/bme280:
+    version: ">=0.0.1"
+  espressif/i2c_bus:
+    version: ">=1.5.1"
+  idf:
+    version: ">=4.4"
