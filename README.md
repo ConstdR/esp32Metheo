@@ -1,43 +1,93 @@
-Here we go with weather sensor based on ESP32 SoC.
+# ESP32 Weather Station
 
-Board powered by Li-Ion 18650 battery.
+Weather station based on ESP32 with BME280 sensor. Measures temperature,
+humidity, pressure and battery voltage. Data is sent over local network
+via **MQTT-UDP** (UDP broadcast, port 1883) and stored in SQLite by the server.
 
-BME280 sensor connection: SDA - Pin 21, SCL - Pin 22 (can be configured in espwconst.py)
+Board is powered by a Li-Ion 18650 battery.
 
-AP-configuration mode starts automatically, if no config file found or by reset board with lowered Pin 35.
-At this mode you can connect to WiFi AP with name like ESP_XXXXX w/o password and set your local WiFi credentials.
-Time automatically adjusted with NTP server.
+---
 
-Pin 34 reads adc from 220kOm/220kOm devider between + Li-Ion and GND pin to monitor battery level, Pin 33 monitoring solar power level.
-
-web.py -- simple web server to store data recieved from ESP32 modules and show current values and history graphs.
-Storage format: sqlite3.
-Data stored by POST requests from ESP32 with data for latest measures
-- timedate - UTC time
-- ip
-- temperature (t)
-- humidity (h)
-- pressure (p) in hPa
-- voltage (v) relative value, must be recalculated to real V. (2420 is near full charge, 1515 -- depleated)a
-Measurement performs once per 900 seconds (15 min) and most of time ESP spend in deep-sleep mode.
-
-*Hints.*
-
-mqttudp url: https://mqtt-udp.readthedocs.io/en/latest/
-
-All pins on ESP32 board can be configured by the esp32/espconf.py file.
-
-Connect to board on USB:
-
-```# screen /dev/ttyUSB0 115200```
-
-Run web to get measures (better under screen/tmux):
+## Repository Structure
 
 ```
-# cd server
-# ./start.sh
+esp32Metheo/
+├── esp32/      ← MicroPython firmware
+├── espidf/     ← ESP-IDF firmware (C)
+└── server/     ← Python server (listenudp.py, web.py, SQLite)
 ```
 
-server also have Dockerfile/Makefile to run it in docker container. 
+---
 
-<img src="Schematic.jpg" alt="Schemtic">
+## Hardware
+
+```
+BME280        ESP32
+─────────────────────
+VCC    →    3.3V
+GND    →    GND
+SDA    →    GPIO 21
+SCL    →    GPIO 22
+SDO    →    GND       ← address 0x76
+CSB    →    3.3V      ← force I2C mode
+
+Battery voltage divider:
+BAT(+) → R1(110k) → GPIO 34 → R2(110k) → GND
+
+LED indicator:
+GPIO 5 → 220Ω resistor → LED(+) → LED(-) → GND
+```
+
+---
+
+## Firmware Variants
+
+### ESP-IDF (C) — `espidf/`
+
+Full-featured firmware using ESP-IDF framework:
+- Deep sleep between measurements (15 min default)
+- NTP time sync once per 24 hours (stored in RTC memory)
+- Wi-Fi credentials via `idf.py menuconfig`
+- Device ID from MAC address
+
+See [`espidf/`](espidf/) for build instructions.
+
+### MicroPython — `esp32/`
+
+Original MicroPython firmware:
+- AP configuration mode on first boot
+- Solar panel voltage monitoring on GPIO 33
+- All pins configurable via `espconf.py`
+
+---
+
+## Data Format
+
+Both firmware variants send MQTT-UDP packets to topic `weather/<device_id>`:
+
+```json
+{"ts":"2026-04-13T10:00:00","t":21.9,"h":24.7,"p":976.6,"v":3.85}
+```
+
+| Field | Description       | Unit     |
+|-------|-------------------|----------|
+| `ts`  | UTC timestamp     | ISO 8601 |
+| `t`   | Temperature       | °C       |
+| `h`   | Humidity          | %        |
+| `p`   | Pressure          | hPa      |
+| `v`   | Supply voltage    | V        |
+
+---
+
+## Server
+
+```bash
+cd server
+./start.sh
+```
+
+- **`listenudp.py`** — receives MQTT-UDP packets and stores to SQLite
+- **`web.py`** — web interface with current values and history graphs
+- Docker support via `Dockerfile` / `Makefile`
+
+More info: [MQTT-UDP](https://mqtt-udp.readthedocs.io/en/latest/)
