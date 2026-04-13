@@ -117,7 +117,10 @@ bool sensor_init(void)
 
 bool sensor_read(sensor_data_t *out)
 {
-    /* BME280 runs in normal mode — just read latest data */
+    /* BME280 runs in normal mode — data is ready after init + short delay.
+     * Forced mode would save ~3.6µA but requires raw register writes
+     * since espressif/bme280 component doesn't expose mode control.
+     * Not worth the complexity given deep sleep kills power anyway. */
     if (bme280_read_temperature(bme280, &out->temperature) != ESP_OK) {
         ESP_LOGE(TAG, "Read temperature failed");
         return false;

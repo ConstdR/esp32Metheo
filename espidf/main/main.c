@@ -130,11 +130,25 @@ void app_main(void)
     gpio_config(&led_conf);
     gpio_set_level(LED_GPIO, 0);
 
-    /* 1. Wi-Fi */
+    /* 1. Start Wi-Fi (non-blocking) */
     wifi_init_sta(WIFI_SSID, WIFI_PASSWORD);
-    wifi_wait_connected();
 
-    /* 2. NTP — only if needed (first boot or 24h elapsed) */
+    /* 2. While Wi-Fi connects, init BME280 in parallel */
+    bool sensor_ok = false;
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+    sensor_ok = sensor_init();
+    esp_log_level_set("i2c.master", ESP_LOG_ERROR);
+    if (!sensor_ok) {
+        ESP_LOGE(TAG, "BME280 init failed! Going to sleep anyway.");
+    }
+
+    /* 3. Wait for Wi-Fi with timeout */
+    if (!wifi_wait_connected_timeout(15000)) {
+        ESP_LOGE(TAG, "Wi-Fi timeout, going to sleep");
+        goto deep_sleep;
+    }
+
+    /* 4. NTP — only if needed (first boot or 24h elapsed) */
     if (need_ntp_sync()) {
         ntp_sync();
     } else {
@@ -142,20 +156,17 @@ void app_main(void)
                  (long long)(get_unix_ms() / 1000LL - s_last_sync_unix));
     }
 
-    /* 3. BME280 sensor */
-    esp_log_level_set("i2c.master", ESP_LOG_NONE);
-    if (!sensor_init()) {
-        ESP_LOGE(TAG, "BME280 init failed! Going to sleep anyway.");
+    if (!sensor_ok) {
         goto deep_sleep;
     }
-    esp_log_level_set("i2c.master", ESP_LOG_ERROR);
 
-    vTaskDelay(pdMS_TO_TICKS(500));
+    /* 5. Wait for BME280 forced measurement to complete (~50 ms) */
+    vTaskDelay(pdMS_TO_TICKS(50));
 
-    /* 4. MQTT-UDP client */
+    /* 6. MQTT-UDP client */
     mqttudp_client_init();
 
-    /* 5. Measure and send */
+    /* 7. Measure and send */
     {
         sensor_data_t data;
         gpio_set_level(LED_GPIO, 1);
@@ -167,9 +178,14 @@ void app_main(void)
         gpio_set_level(LED_GPIO, 0);
     }
 
-    vTaskDelay(pdMS_TO_TICKS(200));
-
 deep_sleep:
+    /* Shut down Wi-Fi before sleep to avoid wasting power */
+    wifi_stop();
+
+    /* Isolate GPIO to prevent leakage during deep sleep */
+    gpio_set_level(LED_GPIO, 0);
+    gpio_reset_pin(LED_GPIO);
+
     ESP_LOGI(TAG, "Going to deep sleep for %d min...", SLEEP_MINUTES);
     esp_sleep_enable_timer_wakeup(SLEEP_US);
     esp_deep_sleep_start();

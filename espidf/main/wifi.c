@@ -13,7 +13,7 @@ static const char *TAG = "wifi";
 
 #define WIFI_CONNECTED_BIT  BIT0
 #define WIFI_FAIL_BIT       BIT1
-#define MAX_RETRY           10
+#define MAX_RETRY           5
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
@@ -60,6 +60,9 @@ void wifi_init_sta(const char *ssid, const char *password)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
 
+    /* Set reduced TX power before start — avoids full-power burst during connect */
+    esp_wifi_set_max_tx_power(44);  // ~11 dBm instead of 20 dBm
+
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
@@ -75,19 +78,35 @@ void wifi_init_sta(const char *ssid, const char *password)
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     esp_wifi_start();
-    esp_wifi_set_max_tx_power(44);  // ~11 dBm instead of 20 dBm — less current draw
 
     ESP_LOGI(TAG, "Connecting to \"%s\"...", ssid);
 }
 
 void wifi_wait_connected(void)
 {
+    wifi_wait_connected_timeout(0);
+}
+
+bool wifi_wait_connected_timeout(uint32_t timeout_ms)
+{
+    TickType_t ticks = (timeout_ms > 0) ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY;
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                           pdFALSE, pdFALSE, portMAX_DELAY);
+                                           pdFALSE, pdFALSE, ticks);
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "Connected!");
-    } else {
-        ESP_LOGE(TAG, "Failed to connect. Check SSID/password.");
+        return true;
     }
+    if (bits & WIFI_FAIL_BIT) {
+        ESP_LOGE(TAG, "Failed to connect. Check SSID/password.");
+    } else {
+        ESP_LOGE(TAG, "Connection timed out after %lu ms", (unsigned long)timeout_ms);
+    }
+    return false;
+}
+
+void wifi_stop(void)
+{
+    esp_wifi_stop();
+    ESP_LOGI(TAG, "Wi-Fi stopped");
 }
