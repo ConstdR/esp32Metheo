@@ -10,15 +10,15 @@
 
 static const char *TAG = "mqttudp";
 
-/* ── Настройки ───────────────────────────────────────────────── */
+/* ── Settings ────────────────────────────────────────────────── */
 #define MQTTUDP_PORT       1883
 #define MQTTUDP_BROADCAST  "255.255.255.255"
 
 /*
- * MQTT PUBLISH пакет (QoS 0):
+ * Minimal MQTT PUBLISH packet (QoS 0):
  *  Byte 0    : 0x30  — PUBLISH, QoS 0
  *  Byte 1    : remaining length (< 128)
- *  Bytes 2-3 : длина topic (big-endian)
+ *  Bytes 2-3 : topic length (big-endian)
  *  Bytes 4.. : topic string
  *  Bytes ..  : payload
  */
@@ -44,11 +44,11 @@ static int build_mqtt_publish(uint8_t *buf, size_t buf_size,
     return (int)i;
 }
 
-/* ── Состояние ───────────────────────────────────────────────── */
-static int               sock = -1;
+/* ── State ───────────────────────────────────────────────────── */
+static int                sock = -1;
 static struct sockaddr_in dest_addr;
 
-/* ── Публичные функции ───────────────────────────────────────── */
+/* ── Public functions ────────────────────────────────────────── */
 void mqttudp_client_init(void)
 {
     sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -95,11 +95,11 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
                                const char *device_id,
                                int64_t unix_ms)
 {
-    /* Топик weather/<device_id> — как ожидает сервер */
+    /* Topic: weather/<device_id> as expected by server */
     char topic[48];
     snprintf(topic, sizeof(topic), "weather/%s", device_id);
 
-    /* ts — datetime строка UTC как ожидает сервер */
+    /* ts — UTC datetime string as expected by server */
     char ts_str[32] = "1970-01-01T00:00:00";
     if (unix_ms > 0) {
         time_t t = (time_t)(unix_ms / 1000);
@@ -107,15 +107,16 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         strftime(ts_str, sizeof(ts_str), "%Y-%m-%dT%H:%M:%S", tm_info);
     }
 
-    /* Поля t/h/p/v как ожидает listenudp.py */
-    char payload[128];
+    /* Fields t/h/p/v/vs as expected by listenudp.py */
+    char payload[160];
     snprintf(payload, sizeof(payload),
-        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f}",
+        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f,\"vs\":%.2f}",
         ts_str,
         data->temperature,
         data->humidity,
         data->pressure,
-        data->voltage);
+        data->voltage,
+        data->voltage_solar);
 
     publish(topic, payload);
 }

@@ -2,24 +2,25 @@
 #include <stdbool.h>
 
 /**
- * @brief Данные с сенсора BME280 + напряжение питания
+ * @brief Sensor data from BME280 + supply voltage
  */
 typedef struct {
-    float temperature;  ///< Температура, °C
-    float humidity;     ///< Влажность, %
-    float pressure;     ///< Давление, hPa
-    float voltage;      ///< Напряжение питания, В
+    float temperature;    ///< Temperature, °C
+    float humidity;       ///< Humidity, %
+    float pressure;       ///< Pressure, hPa
+    float voltage;        ///< Supply voltage, V
+    float voltage_solar;  ///< Solar panel voltage, V
 } sensor_data_t;
 
 /**
- * @brief Инициализация I2C шины и BME280.
- * @return true если успешно
+ * @brief Initialize I2C bus, BME280 and ADC.
+ * @return true on success
  */
 bool sensor_init(void);
 
 /**
- * @brief Считать данные с BME280 и напряжение питания.
- * @param out  Указатель на структуру для результата
- * @return true если успешно
+ * @brief Read data from BME280 and supply voltage.
+ * @param out  Pointer to result structure
+ * @return true on success
  */
 bool sensor_read(sensor_data_t *out);

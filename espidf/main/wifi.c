@@ -44,7 +44,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 
 void wifi_init_sta(const char *ssid, const char *password)
 {
-    // NVS нужен для Wi-Fi
+    /* NVS is required for Wi-Fi */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();
@@ -75,7 +75,7 @@ void wifi_init_sta(const char *ssid, const char *password)
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     esp_wifi_start();
-    esp_wifi_set_max_tx_power(44);  // ~11 dBm вместо 20 dBm — меньше тока
+    esp_wifi_set_max_tx_power(44);  // ~11 dBm instead of 20 dBm — less current draw
 
     ESP_LOGI(TAG, "Connecting to \"%s\"...", ssid);
 }

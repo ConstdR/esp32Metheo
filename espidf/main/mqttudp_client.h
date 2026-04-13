@@ -2,11 +2,15 @@
 #include "sensor.h"
 #include <stdint.h>
 
+/**
+ * @brief Initialize UDP socket for MQTT-UDP broadcast.
+ *        Call after wifi_wait_connected().
+ */
 void mqttudp_client_init(void);
 
 /**
- * Отправить данные сенсора как MQTT PUBLISH на топик "weather"
- * Payload: JSON {"id":"...","temperature":...,"humidity":...,"pressure":...,"ts":<unix_ms>}
+ * @brief Send sensor data as MQTT PUBLISH to topic "weather/<device_id>"
+ *        Payload: JSON {"ts":"...","t":...,"h":...,"p":...,"v":...}
  */
 void mqttudp_send_sensor_data(const sensor_data_t *data,
                                const char *device_id,

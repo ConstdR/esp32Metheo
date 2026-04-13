@@ -34,6 +34,9 @@ CSB    →    3.3V      ← force I2C mode
 Battery voltage divider:
 BAT(+) → R1(110k) → GPIO 34 → R2(110k) → GND
 
+Solar panel voltage divider:
+SOLAR(+) → R1(110k) → GPIO 33 → R2(110k) → GND
+
 LED indicator:
 GPIO 5 → 220Ω resistor → LED(+) → LED(-) → GND
 ```
@@ -76,6 +79,7 @@ Both firmware variants send MQTT-UDP packets to topic `weather/<device_id>`:
 | `h`   | Humidity          | %        |
 | `p`   | Pressure          | hPa      |
 | `v`   | Supply voltage    | V        |
+| `vs`  | Solar voltage     | V        |
 
 ---
 

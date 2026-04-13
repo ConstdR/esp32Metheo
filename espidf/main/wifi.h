@@ -1,12 +1,12 @@
 #pragma once
 
 /**
- * @brief  Инициализация Wi-Fi в режиме Station.
- *         Вызывай один раз до wifi_wait_connected().
+ * @brief Initialize Wi-Fi in Station mode.
+ *        Call once before wifi_wait_connected().
  */
 void wifi_init_sta(const char *ssid, const char *password);
 
 /**
- * @brief  Блокирует выполнение до получения IP-адреса.
+ * @brief Block until IP address is obtained.
  */
 void wifi_wait_connected(void);
