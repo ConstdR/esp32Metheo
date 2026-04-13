@@ -107,14 +107,15 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         strftime(ts_str, sizeof(ts_str), "%Y-%m-%dT%H:%M:%S", tm_info);
     }
 
-    /* Поля t/h/p как ожидает listenudp.py */
+    /* Поля t/h/p/v как ожидает listenudp.py */
     char payload[128];
     snprintf(payload, sizeof(payload),
-        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f}",
+        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f}",
         ts_str,
         data->temperature,
         data->humidity,
-        data->pressure);
+        data->pressure,
+        data->voltage);
 
     publish(topic, payload);
 }

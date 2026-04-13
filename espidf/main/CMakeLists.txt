@@ -14,5 +14,6 @@ idf_component_register(
         esp_event
         esp_driver_gpio
         esp_hw_support
+        esp_adc
         espressif__bme280
 )
