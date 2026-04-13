@@ -25,4 +25,20 @@ menu "Weather Station Configuration"
         help
             GPIO pin number for the status LED.
 
+    config BATTERY_ADC_GPIO
+        int "Battery voltage ADC GPIO pin"
+        default 34
+        range 32 39
+        help
+            GPIO pin for battery voltage measurement via resistor divider.
+            Must be an ADC1 pin (GPIO 32-39 on ESP32).
+
+    config SOLAR_ADC_GPIO
+        int "Solar panel voltage ADC GPIO pin"
+        default 33
+        range 32 39
+        help
+            GPIO pin for solar panel voltage measurement via resistor divider.
+            Must be an ADC1 pin (GPIO 32-39 on ESP32).
+
 endmenu
