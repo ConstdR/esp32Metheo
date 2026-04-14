@@ -11,8 +11,8 @@
 static const char *TAG = "sensor";
 
 /* ── I2C pins ────────────────────────────────────────────────── */
-#define I2C_MASTER_SCL_IO    22
-#define I2C_MASTER_SDA_IO    21
+#define I2C_MASTER_SCL_IO    CONFIG_I2C_SCL_GPIO
+#define I2C_MASTER_SDA_IO    CONFIG_I2C_SDA_GPIO
 #define I2C_MASTER_FREQ_HZ   100000
 #define I2C_PORT             I2C_NUM_0
 

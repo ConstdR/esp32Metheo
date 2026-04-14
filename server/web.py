@@ -76,7 +76,7 @@ def brief_data(fname):
 
     sleep = int(row.get("sleep", 900_000))
     row["period"] = (sleep / 1000 if sleep > 1000 else sleep) / (10 if int(row.get("fake_sleep", 0)) else 1)
-    if not row.get("Vsun", True): row["mvs"] = 0
+#     if not row.get("Vsun", True): row["mvs"] = 0
     return row
 
 # -- route handlers ----------------------------------------------------------

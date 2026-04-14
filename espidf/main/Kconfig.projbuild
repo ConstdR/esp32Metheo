@@ -13,6 +13,20 @@ menu "Weather Station Configuration"
         help
             GPIO pin number for the status LED.
 
+    config I2C_SDA_GPIO
+        int "I2C SDA GPIO pin"
+        default 21
+        range 0 33
+        help
+            GPIO pin for I2C data line (BME280 / SHT30).
+
+    config I2C_SCL_GPIO
+        int "I2C SCL GPIO pin"
+        default 22
+        range 0 33
+        help
+            GPIO pin for I2C clock line (BME280 / SHT30).
+
     config AP_TIMEOUT_SEC
         int "AP mode timeout (seconds)"
         default 300
