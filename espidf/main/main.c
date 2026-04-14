@@ -18,6 +18,13 @@ static const char *TAG = "main";
 
 /* ── Settings from menuconfig (idf.py menuconfig) ───────────── */
 #define LED_GPIO         CONFIG_LED_GPIO
+#if CONFIG_LED_INVERTED
+#define LED_ON  0
+#define LED_OFF 1
+#else
+#define LED_ON  1
+#define LED_OFF 0
+#endif
 #define SLEEP_MINUTES    CONFIG_SLEEP_MINUTES
 #define SLEEP_US         (SLEEP_MINUTES * 60ULL * 1000000ULL)
 
@@ -132,7 +139,7 @@ void app_main(void)
         .intr_type    = GPIO_INTR_DISABLE,
     };
     gpio_config(&led_conf);
-    gpio_set_level(LED_GPIO, 0);
+    gpio_set_level(LED_GPIO, LED_OFF);
 
     /* 1. Common Wi-Fi/NVS init (needed for both STA and AP modes) */
     wifi_common_init();
@@ -202,13 +209,13 @@ void app_main(void)
     /* 10. Measure and send */
     {
         sensor_data_t data;
-        gpio_set_level(LED_GPIO, 1);
+        gpio_set_level(LED_GPIO, LED_ON);
         if (sensor_read(&data)) {
             mqttudp_send_sensor_data(&data, device_id, get_unix_ms());
         } else {
             ESP_LOGW(TAG, "Sensor read failed");
         }
-        gpio_set_level(LED_GPIO, 0);
+        gpio_set_level(LED_GPIO, LED_OFF);
     }
 
 deep_sleep:
@@ -216,7 +223,7 @@ deep_sleep:
     wifi_stop();
 
     /* Isolate GPIO to prevent leakage during deep sleep */
-    gpio_set_level(LED_GPIO, 0);
+    gpio_set_level(LED_GPIO, LED_OFF);
     gpio_reset_pin(LED_GPIO);
 
     ESP_LOGI(TAG, "Going to deep sleep for %d min...", SLEEP_MINUTES);

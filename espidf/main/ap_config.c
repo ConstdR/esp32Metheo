@@ -29,11 +29,16 @@ static TaskHandle_t s_blink_task = NULL;
 static void blink_task(void *arg)
 {
     int gpio = (int)(intptr_t)arg;
+#if CONFIG_LED_INVERTED
+    int on = 0, off = 1;
+#else
+    int on = 1, off = 0;
+#endif
     /* GPIO already configured as output in app_main */
     while (true) {
-        gpio_set_level(gpio, 1);
+        gpio_set_level(gpio, on);
         vTaskDelay(pdMS_TO_TICKS(200));
-        gpio_set_level(gpio, 0);
+        gpio_set_level(gpio, off);
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
@@ -344,7 +349,7 @@ void ap_config_start(uint32_t timeout_sec, const char *device_id)
             vTaskDelete(s_blink_task);
             s_blink_task = NULL;
         }
-        gpio_set_level(CONFIG_LED_GPIO, 0);
+        gpio_set_level(CONFIG_LED_GPIO, CONFIG_LED_INVERTED ? 1 : 0);
     } else {
         /* No timeout — block forever (shouldn't normally happen) */
         while (true) {

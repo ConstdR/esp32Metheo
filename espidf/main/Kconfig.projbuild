@@ -13,6 +13,13 @@ menu "Weather Station Configuration"
         help
             GPIO pin number for the status LED.
 
+    config LED_INVERTED
+        bool "LED active-low (inverted)"
+        default n
+        help
+            Enable if the LED is connected to VCC and turns on
+            when GPIO is LOW (active-low / inverted polarity).
+
     config I2C_SDA_GPIO
         int "I2C SDA GPIO pin"
         default 21
