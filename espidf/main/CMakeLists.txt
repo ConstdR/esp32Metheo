@@ -5,6 +5,7 @@ idf_component_register(
         "sensor.c"
         "mqttudp_client.c"
         "ap_config.c"
+        "sht30.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi

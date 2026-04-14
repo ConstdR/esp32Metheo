@@ -37,6 +37,21 @@ menu "Weather Station Configuration"
             GPIO pin for battery voltage measurement via resistor divider.
             Must be an ADC1 pin (GPIO 32-39 on ESP32).
 
+    choice SENSOR_TYPE
+        prompt "Temperature/humidity sensor"
+        default SENSOR_AUTO
+        help
+            Select the sensor type. AUTO will probe for SHT30 first
+            (at 0x44), and fall back to BME280 (at 0x76) if not found.
+
+        config SENSOR_AUTO
+            bool "Auto-detect (SHT30 → BME280)"
+        config SENSOR_BME280
+            bool "BME280 only"
+        config SENSOR_SHT30
+            bool "SHT30 only"
+    endchoice
+
     config SOLAR_ENABLED
         bool "Enable solar panel voltage measurement"
         default y
