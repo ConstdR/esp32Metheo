@@ -107,8 +107,9 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         strftime(ts_str, sizeof(ts_str), "%Y-%m-%dT%H:%M:%S", tm_info);
     }
 
-    /* Fields t/h/p/v/vs as expected by listenudp.py */
+    /* Fields t/h/p/v and optionally vs */
     char payload[160];
+#if CONFIG_SOLAR_ENABLED
     snprintf(payload, sizeof(payload),
         "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f,\"vs\":%.2f}",
         ts_str,
@@ -117,6 +118,15 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         data->pressure,
         data->voltage,
         data->voltage_solar);
+#else
+    snprintf(payload, sizeof(payload),
+        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f}",
+        ts_str,
+        data->temperature,
+        data->humidity,
+        data->pressure,
+        data->voltage);
+#endif
 
     publish(topic, payload);
 }

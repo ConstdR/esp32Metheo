@@ -37,10 +37,19 @@ menu "Weather Station Configuration"
             GPIO pin for battery voltage measurement via resistor divider.
             Must be an ADC1 pin (GPIO 32-39 on ESP32).
 
+    config SOLAR_ENABLED
+        bool "Enable solar panel voltage measurement"
+        default y
+        help
+            Enable solar panel voltage measurement on SOLAR_ADC_GPIO.
+            Disable this if the device has no solar panel — vs field
+            will be omitted from the MQTT-UDP payload.
+
     config SOLAR_ADC_GPIO
         int "Solar panel voltage ADC GPIO pin"
         default 33
         range 32 39
+        depends on SOLAR_ENABLED
         help
             GPIO pin for solar panel voltage measurement via resistor divider.
             Must be an ADC1 pin (GPIO 32-39 on ESP32).

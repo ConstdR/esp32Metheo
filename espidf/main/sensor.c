@@ -22,13 +22,7 @@ static const char *TAG = "sensor";
  */
 #define BME280_ADDR  BME280_I2C_ADDRESS_DEFAULT
 
-/* ── ADC for supply voltage measurement ──────────────────────── */
-#define VOLTAGE_DIVIDER      2.0f            // 110k/110k divider = 1:2
-
-/* ── ADC for solar panel voltage measurement ─────────────────── */
-#define SOLAR_DIVIDER        2.0f            // 110k/110k divider = 1:2
-
-/* ── GPIO to ADC1 channel mapping (ESP32) ──────────────────── */
+/* ── GPIO to ADC1 channel mapping (ESP32) ───────────────────── */
 static adc_channel_t gpio_to_adc1_channel(int gpio)
 {
     switch (gpio) {
@@ -44,13 +38,20 @@ static adc_channel_t gpio_to_adc1_channel(int gpio)
     }
 }
 
+/* ── ADC for supply voltage (GPIO configurable via menuconfig) ── */
+#define VOLTAGE_DIVIDER      2.0f   // 110k/110k divider = 1:2
 #define VOLTAGE_ADC_CHANNEL  gpio_to_adc1_channel(CONFIG_BATTERY_ADC_GPIO)
-#define SOLAR_ADC_CHANNEL    gpio_to_adc1_channel(CONFIG_SOLAR_ADC_GPIO)
 
-static i2c_bus_handle_t          i2c_bus      = NULL;
-static bme280_handle_t           bme280       = NULL;
-static adc_oneshot_unit_handle_t adc_handle   = NULL;
-static adc_cali_handle_t         adc_cali     = NULL;
+#if CONFIG_SOLAR_ENABLED
+/* ── ADC for solar panel voltage (optional) ─────────────────── */
+#define SOLAR_DIVIDER        2.0f   // 110k/110k divider = 1:2
+#define SOLAR_ADC_CHANNEL    gpio_to_adc1_channel(CONFIG_SOLAR_ADC_GPIO)
+#endif
+
+static i2c_bus_handle_t          i2c_bus    = NULL;
+static bme280_handle_t           bme280     = NULL;
+static adc_oneshot_unit_handle_t adc_handle = NULL;
+static adc_cali_handle_t         adc_cali   = NULL;
 
 /* ── Public functions ────────────────────────────────────────── */
 bool sensor_init(void)
@@ -86,7 +87,7 @@ bool sensor_init(void)
     ESP_LOGI(TAG, "BME280 initialized (addr=0x%02X, SDA=%d, SCL=%d)",
              BME280_ADDR, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
 
-    /* Initialize ADC for voltage measurement */
+    /* Initialize ADC unit */
     adc_oneshot_unit_init_cfg_t adc_cfg = {
         .unit_id  = ADC_UNIT_1,
         .ulp_mode = ADC_ULP_MODE_DISABLE,
@@ -98,7 +99,10 @@ bool sensor_init(void)
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     adc_oneshot_config_channel(adc_handle, VOLTAGE_ADC_CHANNEL, &chan_cfg);
-    adc_oneshot_config_channel(adc_handle, SOLAR_ADC_CHANNEL,   &chan_cfg);
+
+#if CONFIG_SOLAR_ENABLED
+    adc_oneshot_config_channel(adc_handle, SOLAR_ADC_CHANNEL, &chan_cfg);
+#endif
 
     /* ADC calibration */
     adc_cali_line_fitting_config_t cali_cfg = {
@@ -117,10 +121,7 @@ bool sensor_init(void)
 
 bool sensor_read(sensor_data_t *out)
 {
-    /* BME280 runs in normal mode — data is ready after init + short delay.
-     * Forced mode would save ~3.6µA but requires raw register writes
-     * since espressif/bme280 component doesn't expose mode control.
-     * Not worth the complexity given deep sleep kills power anyway. */
+    /* BME280 runs in normal mode — just read latest data */
     if (bme280_read_temperature(bme280, &out->temperature) != ESP_OK) {
         ESP_LOGE(TAG, "Read temperature failed");
         return false;
@@ -139,31 +140,31 @@ bool sensor_read(sensor_data_t *out)
     ESP_LOGI(TAG, "T: %.1f°C  H: %.1f%%  P: %.1f hPa",
              out->temperature, out->humidity, out->pressure);
 
-    /* Read supply voltage via voltage divider on GPIO %d */
-    int raw = 0;
+    /* Read supply voltage via divider on GPIO%d */
+    int raw = 0, mv = 0;
     adc_oneshot_read(adc_handle, VOLTAGE_ADC_CHANNEL, &raw);
-
-    int voltage_mv = 0;
     if (adc_cali) {
-        adc_cali_raw_to_voltage(adc_cali, raw, &voltage_mv);
+        adc_cali_raw_to_voltage(adc_cali, raw, &mv);
     } else {
-        voltage_mv = raw * 3300 / 4095;  // fallback without calibration
+        mv = raw * 3300 / 4095;
     }
-    out->voltage = (voltage_mv / 1000.0f) * VOLTAGE_DIVIDER;
-    ESP_LOGI(TAG, "V: %.2f V (GPIO%d, raw=%d, mv=%d)",
-             out->voltage, CONFIG_BATTERY_ADC_GPIO, raw, voltage_mv);
+    out->voltage = (mv / 1000.0f) * VOLTAGE_DIVIDER;
+    ESP_LOGI(TAG, "V: %.2fV (GPIO%d raw=%d)", out->voltage, CONFIG_BATTERY_ADC_GPIO, raw);
 
-    /* Read solar panel voltage via voltage divider on GPIO %d */
+#if CONFIG_SOLAR_ENABLED
+    /* Read solar panel voltage via divider on GPIO%d */
     adc_oneshot_read(adc_handle, SOLAR_ADC_CHANNEL, &raw);
-    int solar_mv = 0;
+    mv = 0;
     if (adc_cali) {
-        adc_cali_raw_to_voltage(adc_cali, raw, &solar_mv);
+        adc_cali_raw_to_voltage(adc_cali, raw, &mv);
     } else {
-        solar_mv = raw * 3300 / 4095;
+        mv = raw * 3300 / 4095;
     }
-    out->voltage_solar = (solar_mv / 1000.0f) * SOLAR_DIVIDER;
-    ESP_LOGI(TAG, "Vs: %.2f V (GPIO%d, raw=%d, mv=%d)",
-             out->voltage_solar, CONFIG_SOLAR_ADC_GPIO, raw, solar_mv);
+    out->voltage_solar = (mv / 1000.0f) * SOLAR_DIVIDER;
+    ESP_LOGI(TAG, "Vs: %.2fV (GPIO%d raw=%d)", out->voltage_solar, CONFIG_SOLAR_ADC_GPIO, raw);
+#else
+    out->voltage_solar = 0.0f;
+#endif
 
     return true;
 }
