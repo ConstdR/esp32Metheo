@@ -1,17 +1,5 @@
 menu "Weather Station Configuration"
 
-    config WIFI_SSID
-        string "WiFi SSID"
-        default "your_ssid"
-        help
-            SSID of the WiFi network to connect to.
-
-    config WIFI_PASSWORD
-        string "WiFi Password"
-        default "your_password"
-        help
-            Password of the WiFi network.
-
     config SLEEP_MINUTES
         int "Deep sleep interval (minutes)"
         default 15
@@ -24,6 +12,22 @@ menu "Weather Station Configuration"
         default 5
         help
             GPIO pin number for the status LED.
+
+    config AP_TIMEOUT_SEC
+        int "AP mode timeout (seconds)"
+        default 300
+        range 60 3600
+        help
+            How long to keep the configuration AP active before
+            going to deep sleep. Default is 300 (5 minutes).
+
+    config WIFI_FAIL_THRESHOLD
+        int "Wi-Fi failures before AP mode"
+        default 5
+        range 2 20
+        help
+            Number of consecutive Wi-Fi connection failures before
+            entering AP configuration mode.
 
     config BATTERY_ADC_GPIO
         int "Battery voltage ADC GPIO pin"

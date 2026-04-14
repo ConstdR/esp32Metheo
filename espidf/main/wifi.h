@@ -4,6 +4,12 @@
 #include <stdint.h>
 
 /**
+ * @brief Initialize NVS, netif, and event loop.
+ *        Must be called once before any Wi-Fi operations.
+ */
+void wifi_common_init(void);
+
+/**
  * @brief Initialize Wi-Fi in Station mode.
  *        Call once before wifi_wait_connected().
  */

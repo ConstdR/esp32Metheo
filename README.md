@@ -48,10 +48,29 @@ GPIO 5 → 220Ω resistor → LED(+) → LED(-) → GND
 ### ESP-IDF (C) — `espidf/`
 
 Full-featured firmware using ESP-IDF framework:
-- Deep sleep between measurements (15 min default)
-- NTP time sync once per 24 hours (stored in RTC memory)
-- Wi-Fi credentials via `idf.py menuconfig`
-- Device ID from MAC address
+
+* Deep sleep between measurements (15 min default)
+* NTP time sync once per 24 hours (stored in RTC memory)
+* **Wi-Fi configuration via captive portal** (AP mode on first boot)
+* Device ID from MAC address
+* Automatic AP mode after repeated connection failures
+
+#### First boot / Wi-Fi setup
+
+On first boot (or when no credentials are stored), the device starts
+an open Wi-Fi access point named **Metheo_XXXXXX** (last 6 chars of MAC).
+Connect to it and open `http://192.168.4.1` to enter Wi-Fi credentials.
+LED blinks rapidly in AP mode. After 5 minutes with no config, the device
+goes to deep sleep and retries on next wake.
+
+#### Erasing stored credentials
+
+To reset Wi-Fi credentials and force AP mode:
+
+```bash
+idf.py erase-flash
+idf.py flash
+```
 
 See [`espidf/`](espidf/) for build instructions.
 

@@ -12,24 +12,28 @@
 #include "wifi.h"
 #include "sensor.h"
 #include "mqttudp_client.h"
+#include "ap_config.h"
 
 static const char *TAG = "main";
 
 /* ── Settings from menuconfig (idf.py menuconfig) ───────────── */
-#define WIFI_SSID        CONFIG_WIFI_SSID
-#define WIFI_PASSWORD    CONFIG_WIFI_PASSWORD
 #define LED_GPIO         CONFIG_LED_GPIO
 #define SLEEP_MINUTES    CONFIG_SLEEP_MINUTES
 #define SLEEP_US         (SLEEP_MINUTES * 60ULL * 1000000ULL)
+
+/* AP configuration mode — from menuconfig */
+#define AP_TIMEOUT_SEC       CONFIG_AP_TIMEOUT_SEC
+#define WIFI_FAIL_THRESHOLD  CONFIG_WIFI_FAIL_THRESHOLD
 
 /* NTP sync once per day */
 #define NTP_SERVER       "pool.ntp.org"
 #define NTP_SYNC_SECS    (24 * 60 * 60)
 
 /* ── RTC memory — preserved during deep sleep ────────────────── */
-RTC_DATA_ATTR static int64_t  s_saved_unix_ms  = 0;  // Unix time in ms at sync moment
-RTC_DATA_ATTR static uint64_t s_saved_rtc_us   = 0;  // RTC counter at sync moment
-RTC_DATA_ATTR static int64_t  s_last_sync_unix = 0;  // Unix time of last NTP sync
+RTC_DATA_ATTR static int64_t  s_saved_unix_ms   = 0;  // Unix time in ms at sync moment
+RTC_DATA_ATTR static uint64_t s_saved_rtc_us    = 0;  // RTC counter at sync moment
+RTC_DATA_ATTR static int64_t  s_last_sync_unix  = 0;  // Unix time of last NTP sync
+RTC_DATA_ATTR static uint32_t s_wifi_fail_count = 0;   // consecutive Wi-Fi failures
 
 /* ── Get current Unix time in ms ────────────────────────────── */
 static int64_t get_unix_ms(void)
@@ -130,10 +134,34 @@ void app_main(void)
     gpio_config(&led_conf);
     gpio_set_level(LED_GPIO, 0);
 
-    /* 1. Start Wi-Fi (non-blocking) */
-    wifi_init_sta(WIFI_SSID, WIFI_PASSWORD);
+    /* 1. Common Wi-Fi/NVS init (needed for both STA and AP modes) */
+    wifi_common_init();
 
-    /* 2. While Wi-Fi connects, init BME280 in parallel */
+    /* 2. Load Wi-Fi credentials from NVS */
+    wifi_creds_t creds;
+    if (!ap_config_load(&creds)) {
+        ESP_LOGW(TAG, "No Wi-Fi credentials in NVS → AP configuration mode");
+        ap_config_start(AP_TIMEOUT_SEC, device_id);
+        /* If AP times out without config, go to deep sleep */
+        goto deep_sleep;
+    }
+
+    /* 3. Check consecutive Wi-Fi failure count */
+    if (s_wifi_fail_count >= WIFI_FAIL_THRESHOLD) {
+        ESP_LOGW(TAG, "Wi-Fi failed %lu times in a row → AP configuration mode",
+                 (unsigned long)s_wifi_fail_count);
+        /* Don't erase old credentials — just offer a chance to reconfigure.
+         * If nobody reconfigures (AP times out), reset counter so that
+         * on next wake we try the old SSID again. */
+        ap_config_start(AP_TIMEOUT_SEC, device_id);
+        s_wifi_fail_count = 0;
+        goto deep_sleep;
+    }
+
+    /* 4. Start Wi-Fi STA (non-blocking) */
+    wifi_init_sta(creds.ssid, creds.password);
+
+    /* 5. While Wi-Fi connects, init BME280 in parallel */
     bool sensor_ok = false;
     esp_log_level_set("i2c.master", ESP_LOG_NONE);
     sensor_ok = sensor_init();
@@ -142,13 +170,18 @@ void app_main(void)
         ESP_LOGE(TAG, "BME280 init failed! Going to sleep anyway.");
     }
 
-    /* 3. Wait for Wi-Fi with timeout */
+    /* 6. Wait for Wi-Fi with timeout */
     if (!wifi_wait_connected_timeout(15000)) {
-        ESP_LOGE(TAG, "Wi-Fi timeout, going to sleep");
+        s_wifi_fail_count++;
+        ap_config_set_conn_failed(true);
+        ESP_LOGE(TAG, "Wi-Fi failed (attempt %lu/%d), going to sleep",
+                 (unsigned long)s_wifi_fail_count, WIFI_FAIL_THRESHOLD);
         goto deep_sleep;
     }
+    s_wifi_fail_count = 0;  /* reset on success */
+    ap_config_set_conn_failed(false);
 
-    /* 4. NTP — only if needed (first boot or 24h elapsed) */
+    /* 7. NTP — only if needed (first boot or 24h elapsed) */
     if (need_ntp_sync()) {
         ntp_sync();
     } else {
@@ -160,13 +193,13 @@ void app_main(void)
         goto deep_sleep;
     }
 
-    /* 5. Wait for BME280 forced measurement to complete (~50 ms) */
+    /* 8. Wait for BME280 measurement to complete (~50 ms) */
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    /* 6. MQTT-UDP client */
+    /* 9. MQTT-UDP client */
     mqttudp_client_init();
 
-    /* 7. Measure and send */
+    /* 10. Measure and send */
     {
         sensor_data_t data;
         gpio_set_level(LED_GPIO, 1);

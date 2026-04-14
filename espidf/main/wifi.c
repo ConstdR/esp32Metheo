@@ -17,6 +17,7 @@ static const char *TAG = "wifi";
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
+static bool s_common_inited = false;
 
 static void event_handler(void *arg, esp_event_base_t event_base,
                            int32_t event_id, void *event_data)
@@ -42,8 +43,11 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-void wifi_init_sta(const char *ssid, const char *password)
+void wifi_common_init(void)
 {
+    if (s_common_inited) return;
+    s_common_inited = true;
+
     /* NVS is required for Wi-Fi */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -51,17 +55,23 @@ void wifi_init_sta(const char *ssid, const char *password)
         nvs_flash_init();
     }
 
-    s_wifi_event_group = xEventGroupCreate();
-
     esp_netif_init();
     esp_event_loop_create_default();
-    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
 
-    /* Set reduced TX power before start — avoids full-power burst during connect */
+    /* Set reduced TX power — avoids full-power burst during connect */
     esp_wifi_set_max_tx_power(44);  // ~11 dBm instead of 20 dBm
+}
+
+void wifi_init_sta(const char *ssid, const char *password)
+{
+    wifi_common_init();
+
+    s_wifi_event_group = xEventGroupCreate();
+
+    esp_netif_create_default_wifi_sta();
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;

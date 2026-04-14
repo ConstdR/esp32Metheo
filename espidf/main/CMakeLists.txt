@@ -4,6 +4,7 @@ idf_component_register(
         "wifi.c"
         "sensor.c"
         "mqttudp_client.c"
+        "ap_config.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -15,5 +16,7 @@ idf_component_register(
         esp_driver_gpio
         esp_hw_support
         esp_adc
+        esp_http_server
+        esp_timer
         espressif__bme280
 )
