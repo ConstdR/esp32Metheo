@@ -6,6 +6,8 @@
 #include "esp_mac.h"
 #include "esp_rtc_time.h"
 #include "esp_sntp.h"
+#include "esp_task_wdt.h"
+#include "esp_system.h"
 #include "driver/gpio.h"
 #include <time.h>
 
@@ -116,6 +118,25 @@ static void get_device_id(char *buf, size_t buf_size)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
+/* ── Watchdog timeout (seconds) — reboot if stuck before deep sleep ── */
+#define WDT_TIMEOUT_SEC  90
+
+/* ── Reset reason as short string ───────────────────────────────── */
+static const char *get_reset_reason(void)
+{
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:  return "power";
+        case ESP_RST_SW:       return "sw";
+        case ESP_RST_PANIC:    return "panic";
+        case ESP_RST_INT_WDT:  return "iwdt";
+        case ESP_RST_TASK_WDT: return "twdt";
+        case ESP_RST_WDT:      return "wdt";
+        case ESP_RST_DEEPSLEEP:return "sleep";
+        case ESP_RST_BROWNOUT: return "brown";
+        default:               return "other";
+    }
+}
+
 /* ── Entry point ─────────────────────────────────────────────── */
 void app_main(void)
 {
@@ -129,7 +150,16 @@ void app_main(void)
     /* Device ID */
     char device_id[13];
     get_device_id(device_id, sizeof(device_id));
-    ESP_LOGI(TAG, "Device ID: %s", device_id);
+    ESP_LOGI(TAG, "Device ID: %s, reset: %s", device_id, get_reset_reason());
+
+    /* Watchdog — reboot if anything hangs before deep sleep */
+    esp_task_wdt_config_t wdt_cfg = {
+        .timeout_ms  = WDT_TIMEOUT_SEC * 1000,
+        .idle_core_mask = 0,
+        .trigger_panic = true,
+    };
+    esp_task_wdt_reconfigure(&wdt_cfg);
+    esp_task_wdt_add(NULL);
 
     /* 0. LED */
     gpio_config_t led_conf = {
@@ -222,11 +252,14 @@ void app_main(void)
     /* 11. Send device config periodically */
     s_boot_count++;
     if (s_boot_count >= CONFIG_CONFIG_SEND_INTERVAL || s_boot_count == 1) {
-        mqttudp_send_config(device_id, sensor_get_type_name());
+        mqttudp_send_config(device_id, sensor_get_type_name(), get_reset_reason());
         s_boot_count = 0;
     }
 
 deep_sleep:
+    /* Remove WDT before sleep */
+    esp_task_wdt_delete(NULL);
+
     /* Shut down Wi-Fi before sleep to avoid wasting power */
     wifi_stop();
 

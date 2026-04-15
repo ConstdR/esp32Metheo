@@ -67,6 +67,14 @@ menu "Weather Station Configuration"
             GPIO pin for battery voltage measurement via resistor divider.
             Must be an ADC1 pin (GPIO 32-39 on ESP32).
 
+    config LOW_BATTERY_MV
+        int "Low battery threshold (mV)"
+        default 3300
+        range 2500 4200
+        help
+            Battery voltage threshold in millivolts. When voltage drops
+            below this value, "low_bat":1 is added to the MQTT payload.
+
     choice SENSOR_TYPE
         prompt "Temperature/humidity sensor"
         default SENSOR_AUTO

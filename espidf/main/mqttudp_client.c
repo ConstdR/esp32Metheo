@@ -118,36 +118,42 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         strftime(ts_str, sizeof(ts_str), "%Y-%m-%dT%H:%M:%S", tm_info);
     }
 
-    /* Fields t/h/p/v and optionally vs */
-    char payload[160];
+    /* Fields t/h/p/v and optionally vs, lbat */
+    char payload[192];
+    int low_bat = (data->voltage > 0 &&
+                   data->voltage < CONFIG_LOW_BATTERY_MV / 1000.0f) ? 1 : 0;
+
 #if CONFIG_SOLAR_ENABLED
     snprintf(payload, sizeof(payload),
-        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f,\"vs\":%.2f}",
+        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f,\"vs\":%.2f%s}",
         ts_str,
         data->temperature,
         data->humidity,
         data->pressure,
         data->voltage,
-        data->voltage_solar);
+        data->voltage_solar,
+        low_bat ? ",\"lbat\":1" : "");
 #else
     snprintf(payload, sizeof(payload),
-        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f}",
+        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f%s}",
         ts_str,
         data->temperature,
         data->humidity,
         data->pressure,
-        data->voltage);
+        data->voltage,
+        low_bat ? ",\"lbat\":1" : "");
 #endif
 
     publish(topic, payload);
 }
 
-void mqttudp_send_config(const char *device_id, const char *sensor_name)
+void mqttudp_send_config(const char *device_id, const char *sensor_name,
+                         const char *reset_reason)
 {
     char topic[48];
     snprintf(topic, sizeof(topic), "weather/%s/config", device_id);
 
-    char payload[320];
+    char payload[384];
     snprintf(payload, sizeof(payload),
         "{"
         "\"fw\":\"espidf\","
@@ -161,22 +167,26 @@ void mqttudp_send_config(const char *device_id, const char *sensor_name)
 #endif
         "\"i2c_sda\":%d,"
         "\"i2c_scl\":%d,"
-        "\"bat_gpio\":%d"
+        "\"bat_gpio\":%d,"
+        "\"lowb\":%d"
 #if CONFIG_SOLAR_ENABLED
         ",\"solar\":1,\"sol_gpio\":%d"
 #else
         ",\"solar\":0"
 #endif
+        ",\"rst\":\"%s\""
         "}",
         sensor_name,
         CONFIG_SLEEP_MINUTES,
         CONFIG_LED_GPIO,
         CONFIG_I2C_SDA_GPIO,
         CONFIG_I2C_SCL_GPIO,
-        CONFIG_BATTERY_ADC_GPIO
+        CONFIG_BATTERY_ADC_GPIO,
+        CONFIG_LOW_BATTERY_MV
 #if CONFIG_SOLAR_ENABLED
         , CONFIG_SOLAR_ADC_GPIO
 #endif
+        , reset_reason
     );
 
     publish(topic, payload);

@@ -21,4 +21,5 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
  *        Payload: JSON with menuconfig settings and runtime info.
  *        Should be sent infrequently (e.g. once after NTP sync).
  */
-void mqttudp_send_config(const char *device_id, const char *sensor_name);
+void mqttudp_send_config(const char *device_id, const char *sensor_name,
+                         const char *reset_reason);
