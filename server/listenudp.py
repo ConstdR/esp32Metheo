@@ -7,7 +7,7 @@ llg  = logging.getLogger(__name__)
 last = {}
 cfg  = None
 
-DB_FIELDS = ['ts','ip','t','h','p','v','vs','az','alt','w','m']
+DB_FIELDS = ['ts','ip','t','h','p','v','vs','m']
 
 def main():
     global cfg
@@ -53,13 +53,12 @@ def store(wid, data, ip):
     c.execute("""CREATE TABLE IF NOT EXISTS data (
                     timedate text primary key, ip text,
                     temperature real, humidity real, pressure real,
-                    voltage int, voltagesun int, azimuth int, altitude int,
-                    wake int, message text)""")
+                    voltage real, voltagesun real, message text)""")
     c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
     ddata = {f: ddata.get(f) for f in DB_FIELDS}
     c.execute("""INSERT OR REPLACE INTO data
-                    (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,azimuth,altitude,wake,message)
-                    VALUES (:ts,:ip,:t,:h,:p,:v,:vs,:az,:alt,:w,:m)""", ddata)
+                    (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,message)
+                    VALUES (:ts,:ip,:t,:h,:p,:v,:vs,:m)""", ddata)
     dbh.commit(); dbh.close()
 
 if __name__ == "__main__":

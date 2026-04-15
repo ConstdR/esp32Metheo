@@ -36,15 +36,6 @@ def sid(req):           return req.match_info["id"]
 def tmpl(name):         return env.get_template(name)
 def html(body):         return web.Response(content_type="text/html", charset="utf-8", body=body)
 
-def ensure_db(path):
-    if os.path.isfile(path): return
-    with sqlite3.connect(path) as db:
-        db.execute("""CREATE TABLE data (timedate text primary key, ip text,
-                      temperature real, humidity real, pressure real,
-                      voltage real, voltagesun real, message text)""")
-        db.execute("CREATE TABLE params (name text primary key, value text)")
-        db.commit()
-
 def get_range(request):
     raw = request.query.get("daterange", "")
     m   = re.match(r"(\d{4}-\d\d-\d\d).-.(\d{4}-\d\d-\d\d)", raw) if raw else None
@@ -97,7 +88,6 @@ async def favicon(request):
 async def store(request):
     measures = (await request.json())["measures"]
     path = db_path(cfg(request), sid(request))
-    ensure_db(path)
     lg.info(f"Post {len(measures)} rows {measures[0].split(',')[0]} → {measures[-1].split(',')[0]} UTC")
     with sqlite3.connect(path) as db:
         for m in measures:
