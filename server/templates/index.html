@@ -23,7 +23,7 @@
   <td class="hum">{{s.humidity}} %</td>
   <td class="pres">{% if s.pressure %}{{s.pressure}} hPa{% endif %}</td>
   <td class="{% if s.low_bat %}volt-low{% else %}volt{% endif %}">{{s.v}} V</td>
-  <td class="ago">{{s.ago}}{% if s.offline %} <span class="offline">OFFLINE</span>{% endif %}</td>
+  <td class="ago">{{s.ago}}{% if s.offline %} <span class="offline">OFFLINE</span>{% endif %}<br><span style="font-size:10px;color:#aaa">{{s.tztime}}</span></td>
 </tr>
 {% endfor %}
 </table>
