@@ -59,24 +59,32 @@ def max_voltages(dbh):
 def brief_data(fname):
     with get_db(fname) as db:
         row   = db.execute("""SELECT round(temperature,1) AS temperature,
-                      CAST(round(humidity,0) AS int) AS humidity,
-                      CAST(round(pressure,0) AS int) AS pressure,
-                      CAST(round(voltage,0)  AS int) AS voltage,
-                      CAST(round(voltagesun,0) AS int) AS voltagesun,
+                      round(humidity,1) AS humidity,
+                      round(pressure,1) AS pressure,
+                      round(voltage,2) AS voltage,
+                      round(voltagesun,2) AS voltagesun,
                       ip, message, datetime(timedate,'localtime') AS tztime
                       FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
         maxv  = max_voltages(db)
         params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
 
-    row["v"]   = round(row["voltage"]    / maxv["mv"]  * VBAT, 2) if maxv["mv"]  and row["voltage"]    else 0
-    row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * VSOL, 2) if maxv["mvs"] and row["voltagesun"] else 0
+    row["v"]   = round(row["voltage"]    / maxv["mv"]  * VBAT, 2) if maxv["mv"]  and row["voltage"]    and params.get("fw") != "espidf" else round(row["voltage"] or 0, 2)
+    row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * VSOL, 2) if maxv["mvs"] and row["voltagesun"] and params.get("fw") != "espidf" else round(row["voltagesun"] or 0, 2)
     row["mvs"] = maxv["mvs"]
+    row["raw_volts"] = params.get("fw") == "espidf"
     row.update(params)
     row.setdefault("name", "_new_")
 
-    sleep = int(row.get("sleep", 900_000))
-    row["period"] = (sleep / 1000 if sleep > 1000 else sleep) / (10 if int(row.get("fake_sleep", 0)) else 1)
-#     if not row.get("Vsun", True): row["mvs"] = 0
+    if params.get("fw") == "espidf":
+        # sleep is in minutes from menuconfig
+        sleep_sec = int(row.get("sleep", 15)) * 60
+    else:
+        # MicroPython: sleep in milliseconds
+        sleep_ms = int(row.get("sleep", 900_000))
+        sleep_sec = sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
+        if int(row.get("fake_sleep", 0)):
+            sleep_sec /= 10
+    row["period"] = sleep_sec / 2
     return row
 
 # -- route handlers ----------------------------------------------------------
@@ -123,8 +131,13 @@ async def index(request):
 async def csv_get(request):
     startdate, enddate = get_range(request)
     with get_db(db_path(cfg(request), sid(request))) as db:
-        maxv = max_voltages(db)
-        v, vs = (VBAT / maxv["mv"] if maxv["mv"] else 0), (VSOL / maxv["mvs"] if maxv["mvs"] else 0)
+        params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
+        if params.get("fw") == "espidf":
+            v, vs = 1, 1  # raw volts, no normalization
+        else:
+            maxv = max_voltages(db)
+            v  = VBAT / maxv["mv"]  if maxv["mv"]  else 0
+            vs = VSOL / maxv["mvs"] if maxv["mvs"] else 0
         rows = db.execute("""SELECT temperature, humidity, pressure,
                       voltage*? AS voltage, voltagesun*? AS voltagesun,
                       datetime(timedate,'localtime') AS tztime FROM data

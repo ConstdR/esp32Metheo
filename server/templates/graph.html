@@ -149,7 +149,18 @@
   }, 1000);
 </script>
 <hr>
-<h2><i>IP: {{ip}}</i></h2>
-{% if message %}<span class=message>Message: {{message}}</span>{% endif %}
+<div style="color:#888;font-size:11px;font-family:monospace;line-height:1.6">
+  {% if fw %}
+  <b>{{fw}}</b> &middot; sensor: {{sensor}} &middot; sleep: {{sleep}}min
+  &middot; LED: GPIO{{led}}{% if led_inv == '1' %} (inv){% endif %}
+  &middot; I2C: SDA={{i2c_sda}} SCL={{i2c_scl}}
+  &middot; BAT: GPIO{{bat_gpio}}
+  {% if solar == '1' %}&middot; SOL: GPIO{{sol_gpio}}{% endif %}
+  {% if config_interval %}&middot; cfg every {{config_interval}} boots{% endif %}
+  &middot;
+  {% endif %}
+  IP: {{ip}}
+</div>
+{% if message %}<div style="color:#888;font-size:11px;font-style:italic">{{message}}</div>{% endif %}
 </body>
 </html>
