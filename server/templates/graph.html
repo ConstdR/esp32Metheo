@@ -31,14 +31,13 @@
       <input type="submit" value="ok">
     </span>
   </form>
-  / {{tztime}}</i></div>
+  / {{tztime}}{% if offline %} <b style="color:#c00;font-size:16px">OFFLINE</b>{% endif %}</i></div>
   <div class="cf"></div>
   <div class="box temp">{{temperature}} °C</div>
   <div class="box hum">{{humidity}} %</div>
   <div class="cf"></div>
   {% if pressure %}<div class="box pres">{{pressure}} hPa</div>{% endif %}
   <div class="box {% if low_bat %}volt-low{% else %}volt{% endif %}">{{v}}V{% if mvs %} / {{vs}} V<sub>sun</sub>{% endif %}</div>
-  {% if ago %}<div style="float:left;margin:12px 8px;font-size:14px;color:#888">{{ago}}{% if offline %} <b style="color:#c00">OFFLINE</b>{% endif %}</div>{% endif %}
   <div class="cf"></div>
 </div>
 <div>

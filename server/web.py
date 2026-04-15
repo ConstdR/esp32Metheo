@@ -3,7 +3,7 @@
 
 import argparse, configparser, logging, os, re, sqlite3, sys
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from multiprocessing import Process
 
 import jinja2
@@ -50,8 +50,8 @@ def max_voltages(dbh):
 def time_ago(utc_str):
     """Return human-readable 'ago' string and seconds delta from UTC timestamp."""
     try:
-        last_dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
-        delta = (datetime.utcnow() - last_dt).total_seconds()
+        last_dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        delta = (datetime.now(timezone.utc) - last_dt).total_seconds()
         mins = int(delta / 60)
         if mins < 60:
             return f"{mins}m ago", delta
