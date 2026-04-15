@@ -24,3 +24,8 @@ bool sensor_init(void);
  * @return true on success
  */
 bool sensor_read(sensor_data_t *out);
+
+/**
+ * @brief Get active sensor type name ("BME280", "SHT30", or "none").
+ */
+const char *sensor_get_type_name(void);

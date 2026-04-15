@@ -29,13 +29,24 @@ static int build_mqtt_publish(uint8_t *buf, size_t buf_size,
     size_t payload_len = strlen(payload);
     size_t remain_len  = 2 + topic_len + payload_len;
 
-    if (remain_len >= 128 || (2 + 1 + remain_len) > buf_size) {
+    /* Encode remaining length (MQTT variable-length encoding, up to 4 bytes) */
+    uint8_t remain_bytes[4];
+    size_t  remain_count = 0;
+    size_t  rl = remain_len;
+    do {
+        uint8_t byte = rl & 0x7F;
+        rl >>= 7;
+        if (rl > 0) byte |= 0x80;
+        remain_bytes[remain_count++] = byte;
+    } while (rl > 0 && remain_count < 4);
+
+    if ((1 + remain_count + remain_len) > buf_size) {
         return -1;
     }
 
     size_t i = 0;
-    buf[i++] = 0x30;
-    buf[i++] = (uint8_t)remain_len;
+    buf[i++] = 0x30;  /* PUBLISH, QoS 0 */
+    memcpy(&buf[i], remain_bytes, remain_count); i += remain_count;
     buf[i++] = (uint8_t)((topic_len >> 8) & 0xFF);
     buf[i++] = (uint8_t)(topic_len & 0xFF);
     memcpy(&buf[i], topic,   topic_len);   i += topic_len;
@@ -75,7 +86,7 @@ static void publish(const char *topic, const char *payload)
         return;
     }
 
-    uint8_t buf[256];
+    uint8_t buf[512];
     int len = build_mqtt_publish(buf, sizeof(buf), topic, payload);
     if (len < 0) {
         ESP_LOGE(TAG, "Packet too large");
@@ -127,6 +138,46 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         data->pressure,
         data->voltage);
 #endif
+
+    publish(topic, payload);
+}
+
+void mqttudp_send_config(const char *device_id, const char *sensor_name)
+{
+    char topic[48];
+    snprintf(topic, sizeof(topic), "weather/%s/config", device_id);
+
+    char payload[320];
+    snprintf(payload, sizeof(payload),
+        "{"
+        "\"fw\":\"espidf\","
+        "\"sensor\":\"%s\","
+        "\"sleep\":%d,"
+        "\"led\":%d,"
+#if CONFIG_LED_INVERTED
+        "\"led_inv\":1,"
+#else
+        "\"led_inv\":0,"
+#endif
+        "\"i2c_sda\":%d,"
+        "\"i2c_scl\":%d,"
+        "\"bat_gpio\":%d"
+#if CONFIG_SOLAR_ENABLED
+        ",\"solar\":1,\"sol_gpio\":%d"
+#else
+        ",\"solar\":0"
+#endif
+        "}",
+        sensor_name,
+        CONFIG_SLEEP_MINUTES,
+        CONFIG_LED_GPIO,
+        CONFIG_I2C_SDA_GPIO,
+        CONFIG_I2C_SCL_GPIO,
+        CONFIG_BATTERY_ADC_GPIO
+#if CONFIG_SOLAR_ENABLED
+        , CONFIG_SOLAR_ADC_GPIO
+#endif
+    );
 
     publish(topic, payload);
 }

@@ -41,6 +41,7 @@ RTC_DATA_ATTR static int64_t  s_saved_unix_ms   = 0;  // Unix time in ms at sync
 RTC_DATA_ATTR static uint64_t s_saved_rtc_us    = 0;  // RTC counter at sync moment
 RTC_DATA_ATTR static int64_t  s_last_sync_unix  = 0;  // Unix time of last NTP sync
 RTC_DATA_ATTR static uint32_t s_wifi_fail_count = 0;   // consecutive Wi-Fi failures
+RTC_DATA_ATTR static uint32_t s_boot_count      = 0;   // boot counter for periodic config
 
 /* ── Get current Unix time in ms ────────────────────────────── */
 static int64_t get_unix_ms(void)
@@ -216,6 +217,13 @@ void app_main(void)
             ESP_LOGW(TAG, "Sensor read failed");
         }
         gpio_set_level(LED_GPIO, LED_OFF);
+    }
+
+    /* 11. Send device config periodically */
+    s_boot_count++;
+    if (s_boot_count >= CONFIG_CONFIG_SEND_INTERVAL || s_boot_count == 1) {
+        mqttudp_send_config(device_id, sensor_get_type_name());
+        s_boot_count = 0;
     }
 
 deep_sleep:

@@ -7,6 +7,15 @@ menu "Weather Station Configuration"
         help
             How long to sleep between measurements.
 
+    config CONFIG_SEND_INTERVAL
+        int "Config broadcast interval (boot cycles)"
+        default 24
+        range 1 1000
+        help
+            How often to send device config via MQTT-UDP, in number
+            of wake cycles. With 15 min sleep, 24 = every ~6 hours,
+            1 = every wake (useful for debugging).
+
     config LED_GPIO
         int "LED GPIO pin"
         default 5

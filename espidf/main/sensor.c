@@ -223,3 +223,12 @@ bool sensor_read(sensor_data_t *out)
 
     return true;
 }
+
+const char *sensor_get_type_name(void)
+{
+    switch (active_sensor) {
+        case SENSOR_BME280: return "BME280";
+        case SENSOR_SHT30:  return "SHT30";
+        default:            return "none";
+    }
+}
