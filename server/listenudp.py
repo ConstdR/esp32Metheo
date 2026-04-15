@@ -56,6 +56,8 @@ def store(wid, data, ip):
                     voltage real, voltagesun real, message text)""")
     c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
     ddata = {f: ddata.get(f) for f in DB_FIELDS}
+    if ddata.get("ts"):
+        ddata["ts"] = ddata["ts"].replace("T", " ")  # normalize ISO 8601 "T" separator to space
     c.execute("""INSERT OR REPLACE INTO data
                     (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,message)
                     VALUES (:ts,:ip,:t,:h,:p,:v,:vs,:m)""", ddata)

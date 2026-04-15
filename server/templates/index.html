@@ -1,20 +1,29 @@
 <!DOCTYPE HTML>
 <html><head>
-<title>Sensors</title> 
+<title>Sensors</title>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta http-equiv="refresh" content="{{refreshtime}}">
-<style> .temp{color:#25259a} .hum{color:#3d9e3d} .pres{color:#800080} .volt{color:#008080} </style>
+<style>
+  body{font-family:sans-serif;margin:20px}
+  table{border-collapse:collapse}
+  td{padding:6px 12px;border-bottom:1px solid #eee}
+  .name{font-weight:bold;font-size:16px}
+  .temp{color:#25259a} .hum{color:#3d9e3d} .pres{color:#800080}
+  .volt{color:#008080} .volt-low{color:#c00;font-weight:bold}
+  .ago{color:#888;font-size:12px}
+  .offline{color:#c00;font-size:11px;font-weight:bold}
+</style>
 </head>
 <body>
 <table>
 {% for id in sensors %}{% set s = sensors[id] %}
-<tr>
-  <td><a href="graph/{{id}}">{{s.name}}</a></td>
+<tr{% if s.offline %} style="opacity:0.5"{% endif %}>
+  <td class="name"><a href="graph/{{id}}">{{s.name}}</a></td>
   <td class="temp">{{s.temperature}} °C</td>
   <td class="hum">{{s.humidity}} %</td>
   <td class="pres">{% if s.pressure %}{{s.pressure}} hPa{% endif %}</td>
-  <td class="volt">{{s.v}} V</td>
-  <td>{{s.tztime}}</td>
+  <td class="{% if s.low_bat %}volt-low{% else %}volt{% endif %}">{{s.v}} V</td>
+  <td class="ago">{{s.ago}}{% if s.offline %} <span class="offline">OFFLINE</span>{% endif %}</td>
 </tr>
 {% endfor %}
 </table>

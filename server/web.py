@@ -47,6 +47,21 @@ def max_voltages(dbh):
     return dbh.execute(f"SELECT max(voltage) AS mv, max(voltagesun) AS mvs FROM data "
                        f"WHERE timedate > datetime(date('now'), '{VOLT_WIN}')").fetchone()
 
+def time_ago(utc_str):
+    """Return human-readable 'ago' string and seconds delta from UTC timestamp."""
+    try:
+        last_dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+        delta = (datetime.utcnow() - last_dt).total_seconds()
+        mins = int(delta / 60)
+        if mins < 60:
+            return f"{mins}m ago", delta
+        elif mins < 1440:
+            return f"{mins // 60}h {mins % 60}m ago", delta
+        else:
+            return f"{mins // 1440}d {(mins % 1440) // 60}h ago", delta
+    except Exception:
+        return "", 0
+
 def brief_data(fname):
     with get_db(fname) as db:
         row   = db.execute("""SELECT round(temperature,1) AS temperature,
@@ -54,7 +69,8 @@ def brief_data(fname):
                       round(pressure,1) AS pressure,
                       round(voltage,2) AS voltage,
                       round(voltagesun,2) AS voltagesun,
-                      ip, message, datetime(timedate,'localtime') AS tztime
+                      ip, message, datetime(timedate,'localtime') AS tztime,
+                      timedate
                       FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
         maxv  = max_voltages(db)
         params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
@@ -67,15 +83,25 @@ def brief_data(fname):
     row.setdefault("name", "_new_")
 
     if params.get("fw") == "espidf":
-        # sleep is in minutes from menuconfig
         sleep_sec = int(row.get("sleep", 15)) * 60
     else:
-        # MicroPython: sleep in milliseconds
         sleep_ms = int(row.get("sleep", 900_000))
         sleep_sec = sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
         if int(row.get("fake_sleep", 0)):
             sleep_sec /= 10
     row["period"] = sleep_sec / 2
+
+    # Time since last reading + offline detection
+    row["ago"], delta = time_ago(row.get("timedate", ""))
+    row["offline"] = delta > sleep_sec * 2.5 if delta else False
+
+    # Low battery: check if lowb threshold is set and voltage is below it
+    try:
+        lowb_v = int(row.get("lowb", 0)) / 1000.0
+        row["low_bat"] = lowb_v > 0 and row["v"] > 0 and row["v"] < lowb_v
+    except (ValueError, TypeError):
+        row["low_bat"] = False
+
     return row
 
 # -- route handlers ----------------------------------------------------------

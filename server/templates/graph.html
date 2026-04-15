@@ -12,7 +12,7 @@
 <style>
   .namedate{width:30em;height:1em;margin:4px;float:left;font-size:30px;font-weight:bold;text-align:center}
   .box{width:8em;height:1em;margin:4px;border:1px solid black;float:left;font-size:40px;font-weight:bold;text-align:center;padding:.2em;color:white}
-  .temp{background:#25259a} .hum{background:#3d9e3d} .pres{background:#800080} .volt{background:#008080}
+  .temp{background:#25259a} .hum{background:#3d9e3d} .pres{background:#800080} .volt{background:#008080} .volt-low{background:#c00}
   .leftname{width:1em;float:left;font-size:40px;font-weight:bold;text-align:center;padding:3em 0}
   .graph{float:left;width:1000px;height:300px}
   .message{font-size:15px;font-style:italic;font-family:arial}
@@ -37,7 +37,8 @@
   <div class="box hum">{{humidity}} %</div>
   <div class="cf"></div>
   {% if pressure %}<div class="box pres">{{pressure}} hPa</div>{% endif %}
-  <div class="box volt">{{v}}V{% if mvs %} / {{vs}} V<sub>sun</sub>{% endif %}</div>
+  <div class="box {% if low_bat %}volt-low{% else %}volt{% endif %}">{{v}}V{% if mvs %} / {{vs}} V<sub>sun</sub>{% endif %}</div>
+  {% if ago %}<div style="float:left;margin:12px 8px;font-size:14px;color:#888">{{ago}}{% if offline %} <b style="color:#c00">OFFLINE</b>{% endif %}</div>{% endif %}
   <div class="cf"></div>
 </div>
 <div>
@@ -154,9 +155,9 @@
   <b>{{fw}}</b> &middot; sensor: {{sensor}} &middot; sleep: {{sleep}}min
   &middot; LED: GPIO{{led}}{% if led_inv == '1' %} (inv){% endif %}
   &middot; I2C: SDA={{i2c_sda}} SCL={{i2c_scl}}
-  &middot; BAT: GPIO{{bat_gpio}}
+  &middot; BAT: GPIO{{bat_gpio}}{% if lowb %} low&lt;{{(lowb|int/1000)|round(1)}}V{% endif %}
   {% if solar == '1' %}&middot; SOL: GPIO{{sol_gpio}}{% endif %}
-  {% if config_interval %}&middot; cfg every {{config_interval}} boots{% endif %}
+  {% if rst %}&middot; rst: {{rst}}{% endif %}
   &middot;
   {% endif %}
   IP: {{ip}}

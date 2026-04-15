@@ -115,7 +115,7 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
     if (unix_ms > 0) {
         time_t t = (time_t)(unix_ms / 1000);
         struct tm *tm_info = gmtime(&t);
-        strftime(ts_str, sizeof(ts_str), "%Y-%m-%dT%H:%M:%S", tm_info);
+        strftime(ts_str, sizeof(ts_str), "%Y-%m-%d %H:%M:%S", tm_info);
     }
 
     /* Fields t/h/p/v and optionally vs, lbat */
