@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MQTT/UDP listen and store data."""
 import argparse, configparser, logging, re, sqlite3, json
+from datetime import datetime, timezone
 import mqttudp.engine as me
 
 llg  = logging.getLogger(__name__)
@@ -56,8 +57,8 @@ def store(wid, data, ip):
                     voltage real, voltagesun real, message text)""")
     c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
     ddata = {f: ddata.get(f) for f in DB_FIELDS}
-    if ddata.get("ts"):
-        ddata["ts"] = ddata["ts"].replace("T", " ")  # normalize ISO 8601 "T" separator to space
+    # Use server UTC time — device RTC drifts
+    ddata["ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     c.execute("""INSERT OR REPLACE INTO data
                     (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,message)
                     VALUES (:ts,:ip,:t,:h,:p,:v,:vs,:m)""", ddata)

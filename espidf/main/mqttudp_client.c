@@ -6,7 +6,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
-#include <time.h>
 
 static const char *TAG = "mqttudp";
 
@@ -103,30 +102,20 @@ static void publish(const char *topic, const char *payload)
 }
 
 void mqttudp_send_sensor_data(const sensor_data_t *data,
-                               const char *device_id,
-                               int64_t unix_ms)
+                               const char *device_id)
 {
     /* Topic: weather/<device_id> as expected by server */
     char topic[48];
     snprintf(topic, sizeof(topic), "weather/%s", device_id);
 
-    /* ts — UTC datetime string as expected by server */
-    char ts_str[32] = "1970-01-01T00:00:00";
-    if (unix_ms > 0) {
-        time_t t = (time_t)(unix_ms / 1000);
-        struct tm *tm_info = gmtime(&t);
-        strftime(ts_str, sizeof(ts_str), "%Y-%m-%d %H:%M:%S", tm_info);
-    }
-
-    /* Fields t/h/p/v and optionally vs, lbat */
+    /* Fields t/h/p/v and optionally vs, lbat — no timestamp, server adds its own */
     char payload[192];
     int low_bat = (data->voltage > 0 &&
                    data->voltage < CONFIG_LOW_BATTERY_MV / 1000.0f) ? 1 : 0;
 
 #if CONFIG_SOLAR_ENABLED
     snprintf(payload, sizeof(payload),
-        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f,\"vs\":%.2f%s}",
-        ts_str,
+        "{\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f,\"vs\":%.2f%s}",
         data->temperature,
         data->humidity,
         data->pressure,
@@ -135,8 +124,7 @@ void mqttudp_send_sensor_data(const sensor_data_t *data,
         low_bat ? ",\"lbat\":1" : "");
 #else
     snprintf(payload, sizeof(payload),
-        "{\"ts\":\"%s\",\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f%s}",
-        ts_str,
+        "{\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"v\":%.2f%s}",
         data->temperature,
         data->humidity,
         data->pressure,

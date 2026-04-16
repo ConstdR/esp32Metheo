@@ -13,8 +13,7 @@ void mqttudp_client_init(void);
  *        Payload: JSON {"ts":"...","t":...,"h":...,"p":...,"v":...}
  */
 void mqttudp_send_sensor_data(const sensor_data_t *data,
-                               const char *device_id,
-                               int64_t unix_ms);
+                               const char *device_id);
 
 /**
  * @brief Send device config as MQTT PUBLISH to topic "weather/<device_id>/config"

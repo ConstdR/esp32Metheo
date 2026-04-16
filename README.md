@@ -56,7 +56,7 @@ Full-featured firmware using ESP-IDF framework:
 
 * **Sensor auto-detection** — probes SHT30 (0x44) first, falls back to BME280 (0x76)
 * Deep sleep between measurements (configurable, 15 min default)
-* NTP time sync once per 24 hours (stored in RTC memory)
+* Timestamps assigned by server (no NTP dependency on device)
 * **Wi-Fi configuration via captive portal** (AP mode on first boot)
 * Device ID from MAC address
 * Automatic AP mode after repeated connection failures
@@ -122,17 +122,19 @@ Original MicroPython firmware:
 Both firmware variants send MQTT-UDP packets to topic `weather/<device_id>`:
 
 ```json
-{"ts":"2026-04-13T10:00:00","t":21.9,"h":24.7,"p":976.6,"v":3.85,"vs":4.12}
+{"t":21.9,"h":24.7,"p":976.6,"v":3.85,"vs":4.12}
 ```
+
+Timestamp is assigned by the server upon receipt (UTC).
 
 | Field | Description | Unit | Notes |
 |-------|-------------|------|-------|
-| `ts` | UTC timestamp | ISO 8601 | |
 | `t` | Temperature | °C | |
 | `h` | Humidity | % | |
 | `p` | Pressure | hPa | 0 when using SHT30 |
 | `v` | Supply voltage | V | |
 | `vs` | Solar voltage | V | omitted if solar disabled |
+| `lbat` | Low battery flag | — | only present when voltage below threshold |
 
 ---
 

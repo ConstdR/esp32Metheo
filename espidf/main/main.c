@@ -4,12 +4,9 @@
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_mac.h"
-#include "esp_rtc_time.h"
-#include "esp_sntp.h"
 #include "esp_task_wdt.h"
 #include "esp_system.h"
 #include "driver/gpio.h"
-#include <time.h>
 
 #include "wifi.h"
 #include "sensor.h"
@@ -33,79 +30,9 @@ static const char *TAG = "main";
 /* AP configuration mode — from menuconfig */
 #define WIFI_FAIL_THRESHOLD  CONFIG_WIFI_FAIL_THRESHOLD
 
-/* NTP sync once per day */
-#define NTP_SERVER       "pool.ntp.org"
-#define NTP_SYNC_SECS    (24 * 60 * 60)
-
 /* ── RTC memory — preserved during deep sleep ────────────────── */
-RTC_DATA_ATTR static int64_t  s_saved_unix_ms   = 0;  // Unix time in ms at sync moment
-RTC_DATA_ATTR static uint64_t s_saved_rtc_us    = 0;  // RTC counter at sync moment
-RTC_DATA_ATTR static int64_t  s_last_sync_unix  = 0;  // Unix time of last NTP sync
 RTC_DATA_ATTR static uint32_t s_wifi_fail_count = 0;   // consecutive Wi-Fi failures
 RTC_DATA_ATTR static uint32_t s_boot_count      = 0;   // boot counter for periodic config
-
-/* ── Get current Unix time in ms ────────────────────────────── */
-static int64_t get_unix_ms(void)
-{
-    if (s_saved_unix_ms == 0) {
-        return 0;  // not synced yet
-    }
-    uint64_t rtc_now = esp_rtc_get_time_us();
-    int64_t elapsed_ms = (int64_t)((rtc_now - s_saved_rtc_us) / 1000ULL);
-    return s_saved_unix_ms + elapsed_ms;
-}
-
-/* ── NTP sync ────────────────────────────────────────────────── */
-static EventGroupHandle_t s_ntp_event_group;
-#define NTP_SYNCED_BIT BIT0
-
-static void ntp_sync_callback(struct timeval *tv)
-{
-    xEventGroupSetBits(s_ntp_event_group, NTP_SYNCED_BIT);
-}
-
-static bool ntp_sync(void)
-{
-    ESP_LOGI(TAG, "NTP sync from %s...", NTP_SERVER);
-
-    s_ntp_event_group = xEventGroupCreate();
-
-    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, NTP_SERVER);
-    sntp_set_time_sync_notification_cb(ntp_sync_callback);
-    esp_sntp_init();
-
-    /* Wait up to 30 seconds for sync */
-    EventBits_t bits = xEventGroupWaitBits(s_ntp_event_group, NTP_SYNCED_BIT,
-                                           pdFALSE, pdTRUE,
-                                           pdMS_TO_TICKS(30000));
-    esp_sntp_stop();
-    vEventGroupDelete(s_ntp_event_group);
-
-    if (!(bits & NTP_SYNCED_BIT)) {
-        ESP_LOGW(TAG, "NTP sync timeout");
-        return false;
-    }
-
-    /* Save to RTC memory */
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    s_saved_unix_ms  = (int64_t)tv.tv_sec * 1000LL + tv.tv_usec / 1000LL;
-    s_saved_rtc_us   = esp_rtc_get_time_us();
-    s_last_sync_unix = (int64_t)tv.tv_sec;
-
-    ESP_LOGI(TAG, "NTP synced: unix=%lld", (long long)tv.tv_sec);
-    return true;
-}
-
-/* ── Check if NTP sync is needed ────────────────────────────── */
-static bool need_ntp_sync(void)
-{
-    if (s_saved_unix_ms == 0) return true;  // first boot
-
-    int64_t now_unix = get_unix_ms() / 1000LL;
-    return (now_unix - s_last_sync_unix) >= NTP_SYNC_SECS;
-}
 
 /* ── Device ID from MAC address ─────────────────────────────── */
 static void get_device_id(char *buf, size_t buf_size)
@@ -178,10 +105,8 @@ void app_main(void)
     wifi_creds_t creds;
     if (!ap_config_load(&creds)) {
         ESP_LOGW(TAG, "No Wi-Fi credentials in NVS → AP configuration mode");
-        esp_task_wdt_delete(NULL);  /* AP blocks forever, disable WDT */
+        esp_task_wdt_delete(NULL);
         ap_config_start(device_id);
-        /* ap_config_start blocks forever — save_handler reboots on success.
-         * We should never reach here, but just in case: */
         esp_restart();
     }
 
@@ -190,7 +115,7 @@ void app_main(void)
         ESP_LOGW(TAG, "Wi-Fi failed %lu times in a row → AP configuration mode",
                  (unsigned long)s_wifi_fail_count);
         s_wifi_fail_count = 0;
-        esp_task_wdt_delete(NULL);  /* AP blocks forever, disable WDT */
+        esp_task_wdt_delete(NULL);
         ap_config_start(device_id);
         esp_restart();
     }
@@ -198,13 +123,13 @@ void app_main(void)
     /* 4. Start Wi-Fi STA (non-blocking) */
     wifi_init_sta(creds.ssid, creds.password);
 
-    /* 5. While Wi-Fi connects, init BME280 in parallel */
+    /* 5. While Wi-Fi connects, init sensor in parallel */
     bool sensor_ok = false;
     esp_log_level_set("i2c.master", ESP_LOG_NONE);
     sensor_ok = sensor_init();
     esp_log_level_set("i2c.master", ESP_LOG_ERROR);
     if (!sensor_ok) {
-        ESP_LOGE(TAG, "BME280 init failed! Going to sleep anyway.");
+        ESP_LOGE(TAG, "Sensor init failed! Going to sleep anyway.");
     }
 
     /* 6. Wait for Wi-Fi with timeout */
@@ -215,40 +140,32 @@ void app_main(void)
                  (unsigned long)s_wifi_fail_count, WIFI_FAIL_THRESHOLD);
         goto deep_sleep;
     }
-    s_wifi_fail_count = 0;  /* reset on success */
+    s_wifi_fail_count = 0;
     ap_config_set_conn_failed(false);
-
-    /* 7. NTP — only if needed (first boot or 24h elapsed) */
-    if (need_ntp_sync()) {
-        ntp_sync();
-    } else {
-        ESP_LOGI(TAG, "NTP skip, last sync %lld sec ago",
-                 (long long)(get_unix_ms() / 1000LL - s_last_sync_unix));
-    }
 
     if (!sensor_ok) {
         goto deep_sleep;
     }
 
-    /* 8. Wait for BME280 measurement to complete (~50 ms) */
+    /* 7. Wait for sensor measurement to complete (~50 ms) */
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    /* 9. MQTT-UDP client */
+    /* 8. MQTT-UDP client */
     mqttudp_client_init();
 
-    /* 10. Measure and send */
+    /* 9. Measure and send */
     {
         sensor_data_t data;
         gpio_set_level(LED_GPIO, LED_ON);
         if (sensor_read(&data)) {
-            mqttudp_send_sensor_data(&data, device_id, get_unix_ms());
+            mqttudp_send_sensor_data(&data, device_id);
         } else {
             ESP_LOGW(TAG, "Sensor read failed");
         }
         gpio_set_level(LED_GPIO, LED_OFF);
     }
 
-    /* 11. Send device config periodically */
+    /* 10. Send device config periodically */
     s_boot_count++;
     if (s_boot_count >= CONFIG_CONFIG_SEND_INTERVAL || s_boot_count == 1) {
         mqttudp_send_config(device_id, sensor_get_type_name(), get_reset_reason());
