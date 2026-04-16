@@ -87,9 +87,7 @@ def brief_data(fname):
     else:
         sleep_ms = int(row.get("sleep", 900_000))
         sleep_sec = sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
-        if int(row.get("fake_sleep", 0)):
-            sleep_sec /= 10
-    row["period"] = sleep_sec / 2
+    row["period"] = sleep_sec 
 
     # Time since last reading + offline detection
     row["ago"], delta = time_ago(row.get("timedate", ""))
