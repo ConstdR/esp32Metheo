@@ -1,31 +1,76 @@
 <!DOCTYPE HTML>
 <html><head>
-<title>Sensors</title>
+<title>Weather Stations</title>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta http-equiv="refresh" content="{{refreshtime}}">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  body{font-family:sans-serif;margin:20px}
-  table{border-collapse:collapse}
-  td{padding:6px 12px;border-bottom:1px solid #eee}
-  .name{font-weight:bold;font-size:16px}
-  .temp{color:#25259a} .hum{color:#3d9e3d} .pres{color:#800080}
-  .volt{color:#008080} .volt-low{color:#c00;font-weight:bold}
-  .ago{color:#888;font-size:12px}
-  .offline{color:#c00;font-size:11px;font-weight:bold}
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f0f2f5; padding: 20px }
+  h1 { color: #333; margin-bottom: 20px; font-size: 22px }
+  .cards { display: flex; flex-wrap: wrap; gap: 16px }
+  .card { background: #fff; border-radius: 12px; padding: 20px; width: 320px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: box-shadow 0.2s;
+          text-decoration: none; color: inherit; display: block }
+  .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15) }
+  .card.offline { opacity: 0.5 }
+  .card-header { display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 14px }
+  .card-name { font-size: 18px; font-weight: 700; color: #333 }
+  .card-status { font-size: 11px; color: #999 }
+  .card-status .offline-badge { color: #c00; font-weight: 700 }
+  .readings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+  .reading { padding: 8px; border-radius: 8px; background: #f8f9fa }
+  .reading .value { font-size: 24px; font-weight: 700 }
+  .reading .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px }
+  .r-temp .value { color: #25259a }
+  .r-hum .value { color: #3d9e3d }
+  .r-pres .value { color: #800080 }
+  .r-volt .value { color: #008080 }
+  .r-volt.low .value { color: #c00 }
+  .card-footer { margin-top: 12px; font-size: 11px; color: #aaa; display: flex;
+                 justify-content: space-between }
 </style>
 </head>
 <body>
-<table>
+<h1>&#9729; Weather Stations</h1>
+<div class="cards">
 {% for id in sensors %}{% set s = sensors[id] %}
-<tr{% if s.offline %} style="opacity:0.5"{% endif %}>
-  <td class="name"><a href="graph/{{id}}">{{s.name}}</a></td>
-  <td class="temp">{{s.temperature}} °C</td>
-  <td class="hum">{{s.humidity}} %</td>
-  <td class="pres">{% if s.pressure %}{{s.pressure}} hPa{% endif %}</td>
-  <td class="{% if s.low_bat %}volt-low{% else %}volt{% endif %}">{{s.v}} V</td>
-  <td class="ago">{{s.ago}}{% if s.offline %} <span class="offline">OFFLINE</span>{% endif %}<br><span style="font-size:10px;color:#aaa">{{s.tztime}}</span></td>
-</tr>
+<a href="graph/{{id}}" class="card{% if s.offline %} offline{% endif %}">
+  <div class="card-header">
+    <span class="card-name">{{s.name}}</span>
+    <span class="card-status">
+      {{s.ago}}
+      {% if s.offline %}<span class="offline-badge">OFFLINE</span>{% endif %}
+    </span>
+  </div>
+  <div class="readings">
+    <div class="reading r-temp">
+      <div class="value">{{s.temperature}}°</div>
+      <div class="label">Temperature</div>
+    </div>
+    <div class="reading r-hum">
+      <div class="value">{{s.humidity}}%</div>
+      <div class="label">Humidity</div>
+    </div>
+    {% if s.pressure %}
+    <div class="reading r-pres">
+      <div class="value">{{s.pressure}}</div>
+      <div class="label">hPa</div>
+    </div>
+    {% endif %}
+    <div class="reading r-volt{% if s.low_bat %} low{% endif %}">
+      <div class="value">{{s.v}}V</div>
+      <div class="label">Battery{% if s.low_bat %} ⚠{% endif %}</div>
+    </div>
+  </div>
+  <div class="card-footer">
+    <span>{{s.tztime}}</span>
+    <span>{{s.sensor|default('')}}</span>
+  </div>
+</a>
 {% endfor %}
-</table>
+</div>
 </body>
 </html>
