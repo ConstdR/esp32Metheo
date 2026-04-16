@@ -1,63 +1,155 @@
 <!doctype html>
 <html lang="en">
 <head>
-<title>{{name}} weather / {{id}}</title>
+<title>{{name}} / {{id}}</title>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta http-equiv="refresh" content="{{refreshtime}}">
-<meta http-equiv="expires" content="{{refreshtime * 2}}">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="/static/dygraph.js"></script>
 <script src="/static/flatpickr.min.js"></script>
 <link rel="stylesheet" href="/static/dygraph.css">
 <link rel="stylesheet" href="/static/flatpickr.min.css">
 <style>
-  .namedate{width:30em;height:1em;margin:4px;float:left;font-size:30px;font-weight:bold;text-align:center}
-  .box{width:8em;height:1em;margin:4px;border:1px solid black;float:left;font-size:40px;font-weight:bold;text-align:center;padding:.2em;color:white}
-  .temp{background:#25259a} .hum{background:#3d9e3d} .pres{background:#800080} .volt{background:#008080} .volt-low{background:#c00}
-  .leftname{width:1em;float:left;font-size:40px;font-weight:bold;text-align:center;padding:3em 0}
-  .graph{float:left;width:1000px;height:300px}
-  .message{font-size:15px;font-style:italic;font-family:arial}
-  .cf{clear:both}
-  input[type=text],input[type=submit]{font-size:20px;font-weight:bold}
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f0f2f5; padding: 20px; color: #333 }
+
+  /* ── Header ── */
+  .header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap }
+  .header a { color: #888; text-decoration: none; font-size: 14px }
+  .header a:hover { color: #333 }
+  .station-name { font-size: 22px; font-weight: 700; cursor: pointer }
+  .station-name:hover { color: #2196F3 }
+  .station-time { color: #888; font-size: 14px }
+  .offline-badge { color: #c00; font-weight: 700; font-size: 14px }
+  .rename-form { display: none }
+  .rename-form input[type=text] { font-size: 16px; padding: 4px 8px; border: 2px solid #2196F3;
+    border-radius: 6px; width: 200px }
+  .rename-form input[type=submit] { font-size: 14px; padding: 4px 12px; background: #2196F3;
+    color: #fff; border: none; border-radius: 6px; cursor: pointer }
+
+  /* ── Current readings card ── */
+  .current { background: #fff; border-radius: 12px; padding: 20px;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px }
+  .readings { display: flex; gap: 12px; flex-wrap: wrap }
+  .reading { padding: 12px 20px; border-radius: 8px; background: #f8f9fa; min-width: 120px }
+  .reading .value { font-size: 32px; font-weight: 700 }
+  .reading .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;
+                    margin-top: 2px }
+  .r-temp .value { color: #25259a }
+  .r-hum .value { color: #3d9e3d }
+  .r-pres .value { color: #800080 }
+  .r-volt .value { color: #008080 }
+  .r-volt.low .value { color: #c00 }
+
+  /* ── Date range + countdown ── */
+  .controls { background: #fff; border-radius: 12px; padding: 14px 20px;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px;
+              display: flex; align-items: center; gap: 16px; flex-wrap: wrap }
+  .controls .countdown { color: #aaa; font-size: 13px; min-width: 30px }
+  #dates { font-size: 15px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px;
+           width: 240px }
+
+  /* ── Graphs ── */
+  .graph-section { background: #fff; border-radius: 12px; padding: 16px 20px;
+                   box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px;
+                   position: relative; overflow: visible }
+  .graph-section .graph-label { font-size: 13px; font-weight: 600; color: #888;
+                                margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px }
+  .graph-container { width: 100%; height: 250px; position: relative }
+  .dygraph-legend { background: rgba(255,255,255,0.9) !important; padding: 4px 8px !important;
+                    border-radius: 4px; font-size: 12px !important; pointer-events: none;
+                    white-space: nowrap }
+
+  /* ── Footer ── */
+  .footer { color: #aaa; font-size: 11px; font-family: monospace; line-height: 1.8;
+            margin-top: 8px; padding: 0 4px }
 </style>
 </head>
 <body>
-<div>
-  <div style="float:left"><a href="/">Home</a></div>
-  <form method="GET">
-  <div class="namedate"><i>
-    <span id="espwname" onclick="startRename()">{{name}}</span>
-    <span id="espwrename" style="display:none">
+
+<!-- Header -->
+<div class="header">
+  <a href="/">← Home</a>
+  <form method="GET" style="display:contents">
+    <span class="station-name" id="espwname" onclick="startRename()">{{name}}</span>
+    <span class="rename-form" id="espwrename">
       <input type=text name="rename" value="{{name}}">
-      <input type="submit" value="ok">
+      <input type="submit" value="OK">
     </span>
   </form>
-  / {{tztime}}{% if offline %} <b style="color:#c00;font-size:16px">OFFLINE</b>{% endif %}</i></div>
-  <div class="cf"></div>
-  <div class="box temp">{{temperature}} °C</div>
-  <div class="box hum">{{humidity}} %</div>
-  <div class="cf"></div>
-  {% if pressure %}<div class="box pres">{{pressure}} hPa</div>{% endif %}
-  <div class="box {% if low_bat %}volt-low{% else %}volt{% endif %}">{{v}}V{% if mvs %} / {{vs}} V<sub>sun</sub>{% endif %}</div>
-  <div class="cf"></div>
+  <span class="station-time">{{tztime}}</span>
+  {% if offline %}<span class="offline-badge">OFFLINE</span>{% endif %}
 </div>
-<div>
-  <div style="text-align:center;width:1000px">
-    <div id="countdown" style="float:left">{{refreshtime}}</div>
-    <form id="rangeform" method="GET">
-      <input type="text" id="dates" name="daterange" value="{{startdate}} - {{enddate}}">
-    </form>
+
+<!-- Current readings -->
+<div class="current">
+  <div class="readings">
+    <div class="reading r-temp">
+      <div class="value">{{temperature}}°</div>
+      <div class="label">Temperature</div>
+    </div>
+    <div class="reading r-hum">
+      <div class="value">{{humidity}}%</div>
+      <div class="label">Humidity</div>
+    </div>
+    {% if pressure %}
+    <div class="reading r-pres">
+      <div class="value">{{pressure}}</div>
+      <div class="label">hPa</div>
+    </div>
+    {% endif %}
+    <div class="reading r-volt{% if low_bat %} low{% endif %}">
+      <div class="value">{{v}}V</div>
+      <div class="label">Battery{% if low_bat %} ⚠{% endif %}</div>
+    </div>
+    {% if mvs %}
+    <div class="reading r-volt">
+      <div class="value">{{vs}}V</div>
+      <div class="label">Solar</div>
+    </div>
+    {% endif %}
   </div>
-  <div class="leftname">°C</div><div id="temperature" class="graph"></div><div class="cf"></div>
-  {% if pressure %}
-  <div class="leftname">hPa</div><div id="pressure" class="graph"></div><div class="cf"></div>
-  {% endif %}
-  <div class="leftname">%</div><div id="humidity" class="graph"></div><div class="cf"></div>
-  <div class="leftname">V</div><div id="battery" class="graph"></div><div class="cf"></div>
-  {% if mvs %}
-  <div class="leftname">V<sub>sun</sub></div><div id="solar" class="graph"></div>
-  {% endif %}
-  <div class="cf"></div>
 </div>
+
+<!-- Date range controls -->
+<div class="controls">
+  <span class="countdown" id="countdown">{{refreshtime}}</span>
+  <form id="rangeform" method="GET" style="display:contents">
+    <input type="text" id="dates" name="daterange" value="{{startdate}} - {{enddate}}">
+  </form>
+</div>
+
+<!-- Graphs -->
+<div class="graph-section">
+  <div class="graph-label">Temperature °C</div>
+  <div class="graph-container" id="temperature"></div>
+</div>
+
+{% if pressure %}
+<div class="graph-section">
+  <div class="graph-label">Pressure hPa</div>
+  <div class="graph-container" id="pressure"></div>
+</div>
+{% endif %}
+
+<div class="graph-section">
+  <div class="graph-label">Humidity %</div>
+  <div class="graph-container" id="humidity"></div>
+</div>
+
+<div class="graph-section">
+  <div class="graph-label">Battery V</div>
+  <div class="graph-container" id="battery"></div>
+</div>
+
+{% if mvs %}
+<div class="graph-section">
+  <div class="graph-label">Solar V</div>
+  <div class="graph-container" id="solar"></div>
+</div>
+{% endif %}
+
 <script>
   flatpickr("#dates", {
     mode: "range",
@@ -75,68 +167,49 @@
   req.send();
 
   var labels = ['Time','Temperature','Humidity','Pressure','Battery','Solar'];
-  function dg(id, col, vis) {
-    return new Dygraph(document.getElementById(id), csv,
-      {labels:labels, visibility:vis, rollPeriod:4, showRoller:true, color:col});
+
+  function hline(canvas, area, g, yVal, color) {
+    var yPx = g.toDomYCoord(yVal);
+    canvas.beginPath();
+    canvas.strokeStyle = color;
+    canvas.lineWidth = 1;
+    canvas.setLineDash([4, 4]);
+    canvas.moveTo(area.x, yPx);
+    canvas.lineTo(area.x + area.w, yPx);
+    canvas.stroke();
+    canvas.setLineDash([]);
   }
 
-  var gt = new Dygraph(document.getElementById("temperature"), csv,
-    { labels: labels,
-      visibility: [true,false,false,false,false],
-      rollPeriod: 4, showRoller: true, color: "#1b5e20",
-      underlayCallback: function(canvas, area, g) {
-        [{y: 0, color: 'rgba(0,0,255,0.5)'},
-         {y: 20, color: 'rgba(255,0,0,0.5)'}].forEach(function(line) {
-          var yPx = g.toDomYCoord(line.y);
-          canvas.beginPath();
-          canvas.strokeStyle = line.color;
-          canvas.lineWidth = 1.5;
-          canvas.setLineDash([4, 4]);
-          canvas.moveTo(area.x, yPx);
-          canvas.lineTo(area.x + area.w, yPx);
-          canvas.stroke();
-          canvas.setLineDash([]);
-        });
-      }
+  function makeDg(id, vis, color, lines) {
+    return new Dygraph(document.getElementById(id), csv, {
+      labels: labels, visibility: vis, rollPeriod: 4, showRoller: true, color: color,
+      legend: 'follow', legendFormatter: function(data) {
+        if (!data.x) return '';
+        var html = '<b>' + data.xHTML + '</b>';
+        data.series.forEach(function(s) { if (s.isVisible && s.yHTML) html += ' &nbsp; ' + s.yHTML; });
+        return html;
+      },
+      underlayCallback: lines ? function(canvas, area, g) {
+        lines.forEach(function(l) { hline(canvas, area, g, l.y, l.color); });
+      } : undefined
     });
+  }
 
-  var g1 = new Dygraph(document.getElementById("humidity"), csv,
-    { labels: labels,
-      visibility: [false,true,false,false,false],
-      rollPeriod: 4, showRoller: true, color: "#3d9e3d",
-      underlayCallback: function(canvas, area, g) {
-        var yPx = g.toDomYCoord(50);
-        canvas.beginPath();
-        canvas.strokeStyle = 'rgba(0,0,255,0.5)';
-        canvas.lineWidth = 1.5;
-        canvas.setLineDash([4, 4]);
-        canvas.moveTo(area.x, yPx);
-        canvas.lineTo(area.x + area.w, yPx);
-        canvas.stroke();
-        canvas.setLineDash([]);
-      }
-    });
+  makeDg("temperature", [true,false,false,false,false], "#1b5e20",
+         [{y:0, color:'rgba(0,0,255,0.4)'}, {y:20, color:'rgba(255,0,0,0.4)'}]);
+
+  makeDg("humidity", [false,true,false,false,false], "#3d9e3d",
+         [{y:50, color:'rgba(0,0,255,0.4)'}]);
+
   {% if pressure %}
-  var g2 = new Dygraph(document.getElementById("pressure"), csv,
-    { labels: labels,
-      visibility: [false,false,true,false,false],
-      rollPeriod: 4, showRoller: true, color: "#800080",
-      underlayCallback: function(canvas, area, g) {
-        var yPx = g.toDomYCoord(1013);
-        canvas.beginPath();
-        canvas.strokeStyle = 'rgba(0,0,255,0.5)';
-        canvas.lineWidth = 1.5;
-        canvas.setLineDash([4, 4]);
-        canvas.moveTo(area.x, yPx);
-        canvas.lineTo(area.x + area.w, yPx);
-        canvas.stroke();
-        canvas.setLineDash([]);
-      }
-    });
+  makeDg("pressure", [false,false,true,false,false], "#800080",
+         [{y:1013, color:'rgba(0,0,255,0.4)'}]);
   {% endif %}
-  var g3 = dg("battery",     "#008080", [false,false,false,true, false]);
+
+  makeDg("battery", [false,false,false,true,false], "#008080");
+
   {% if mvs %}
-  var g4 = dg("solar",       "#8080f0", [false,false,false,false,true ]);
+  makeDg("solar", [false,false,false,false,true], "#8080f0");
   {% endif %}
 
   function startRename() {
@@ -145,22 +218,25 @@
   }
   setInterval(function(){
     var el = document.getElementById("countdown");
-    el.textContent = el.textContent - 1;
+    var v = parseInt(el.textContent) - 1;
+    el.textContent = v > 0 ? v : "⟳";
   }, 1000);
 </script>
-<hr>
-<div style="color:#888;font-size:11px;font-family:monospace;line-height:1.6">
+
+<!-- Footer -->
+<div class="footer">
   {% if fw %}
-  <b>{{fw}}</b> &middot; sensor: {{sensor}} &middot; sleep: {{sleep}}min
-  &middot; LED: GPIO{{led}}{% if led_inv == '1' %} (inv){% endif %}
-  &middot; I2C: SDA={{i2c_sda}} SCL={{i2c_scl}}
-  &middot; BAT: GPIO{{bat_gpio}}{% if lowb %} low&lt;{{(lowb|int/1000)|round(1)}}V{% endif %}
-  {% if solar == '1' %}&middot; SOL: GPIO{{sol_gpio}}{% endif %}
-  {% if rst %}&middot; rst: {{rst}}{% endif %}
-  &middot;
+  <b>{{fw}}</b> · sensor: {{sensor}} · sleep: {{sleep}}min
+  · LED: GPIO{{led}}{% if led_inv == '1' %} (inv){% endif %}
+  · I2C: SDA={{i2c_sda}} SCL={{i2c_scl}}
+  · BAT: GPIO{{bat_gpio}}{% if lowb %} low&lt;{{(lowb|int/1000)|round(1)}}V{% endif %}
+  {% if solar == '1' %}· SOL: GPIO{{sol_gpio}}{% endif %}
+  {% if rst %}· rst: {{rst}}{% endif %}
+  ·
   {% endif %}
   IP: {{ip}}
 </div>
-{% if message %}<div style="color:#888;font-size:11px;font-style:italic">{{message}}</div>{% endif %}
+{% if message %}<div class="footer" style="font-style:italic">{{message}}</div>{% endif %}
+
 </body>
 </html>
