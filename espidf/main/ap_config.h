@@ -44,9 +44,7 @@ bool ap_config_get_conn_failed(void);
 
 /**
  * @brief Start AP mode with captive portal for Wi-Fi configuration.
- *        Blocks until credentials are submitted or timeout expires.
- *        On success, saves credentials to NVS and reboots.
- * @param timeout_sec  AP timeout in seconds (0 = no timeout)
+ *        Blocks forever until credentials are submitted (then reboots).
  * @param device_id    Device ID string for AP SSID suffix
  */
-void ap_config_start(uint32_t timeout_sec, const char *device_id);
+void ap_config_start(const char *device_id);

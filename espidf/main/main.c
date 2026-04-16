@@ -31,7 +31,6 @@ static const char *TAG = "main";
 #define SLEEP_US         (SLEEP_MINUTES * 60ULL * 1000000ULL)
 
 /* AP configuration mode — from menuconfig */
-#define AP_TIMEOUT_SEC       CONFIG_AP_TIMEOUT_SEC
 #define WIFI_FAIL_THRESHOLD  CONFIG_WIFI_FAIL_THRESHOLD
 
 /* NTP sync once per day */
@@ -179,21 +178,21 @@ void app_main(void)
     wifi_creds_t creds;
     if (!ap_config_load(&creds)) {
         ESP_LOGW(TAG, "No Wi-Fi credentials in NVS → AP configuration mode");
-        ap_config_start(AP_TIMEOUT_SEC, device_id);
-        /* If AP times out without config, go to deep sleep */
-        goto deep_sleep;
+        esp_task_wdt_delete(NULL);  /* AP blocks forever, disable WDT */
+        ap_config_start(device_id);
+        /* ap_config_start blocks forever — save_handler reboots on success.
+         * We should never reach here, but just in case: */
+        esp_restart();
     }
 
     /* 3. Check consecutive Wi-Fi failure count */
     if (s_wifi_fail_count >= WIFI_FAIL_THRESHOLD) {
         ESP_LOGW(TAG, "Wi-Fi failed %lu times in a row → AP configuration mode",
                  (unsigned long)s_wifi_fail_count);
-        /* Don't erase old credentials — just offer a chance to reconfigure.
-         * If nobody reconfigures (AP times out), reset counter so that
-         * on next wake we try the old SSID again. */
-        ap_config_start(AP_TIMEOUT_SEC, device_id);
         s_wifi_fail_count = 0;
-        goto deep_sleep;
+        esp_task_wdt_delete(NULL);  /* AP blocks forever, disable WDT */
+        ap_config_start(device_id);
+        esp_restart();
     }
 
     /* 4. Start Wi-Fi STA (non-blocking) */

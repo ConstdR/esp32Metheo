@@ -5,7 +5,6 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_http_server.h"
-#include "esp_timer.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -282,9 +281,9 @@ static esp_err_t redirect_handler(httpd_req_t *req)
 }
 
 /* ── AP mode with HTTP server ──────────────────────────────────── */
-void ap_config_start(uint32_t timeout_sec, const char *device_id)
+void ap_config_start(const char *device_id)
 {
-    ESP_LOGI(TAG, "Starting AP configuration mode (timeout=%lus)", (unsigned long)timeout_sec);
+    ESP_LOGI(TAG, "Starting AP configuration mode (no timeout)");
 
     /* Start LED blinking */
     s_blink_task = NULL;
@@ -336,24 +335,9 @@ void ap_config_start(uint32_t timeout_sec, const char *device_id)
     httpd_register_uri_handler(server, &uri_save);
     httpd_register_uri_handler(server, &uri_redirect);
 
-    /* Wait for timeout — save_handler will reboot on success */
-    if (timeout_sec > 0) {
-        ESP_LOGI(TAG, "AP will shut down in %lu seconds", (unsigned long)timeout_sec);
-        vTaskDelay(pdMS_TO_TICKS(timeout_sec * 1000));
-
-        ESP_LOGW(TAG, "AP timeout — no config received, going to sleep");
-        httpd_stop(server);
-        esp_wifi_stop();
-
-        if (s_blink_task) {
-            vTaskDelete(s_blink_task);
-            s_blink_task = NULL;
-        }
-        gpio_set_level(CONFIG_LED_GPIO, CONFIG_LED_INVERTED ? 1 : 0);
-    } else {
-        /* No timeout — block forever (shouldn't normally happen) */
-        while (true) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
+    /* Block forever — save_handler will reboot on success */
+    ESP_LOGI(TAG, "Waiting for configuration...");
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
