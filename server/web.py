@@ -87,6 +87,52 @@ def time_ago(utc_str):
     except Exception:
         return "", 0
 
+def weather_forecast(db):
+    """Simple weather forecast based on pressure and humidity trends over 6 hours.
+    Returns dict with 'icon', 'text', and 'detail' (rate of change)."""
+    try:
+        # Get pressure and humidity from 6 hours ago and now
+        now = db.execute("""SELECT pressure, humidity FROM data
+                           WHERE pressure IS NOT NULL AND pressure != 'None' AND pressure > 0
+                           ORDER BY timedate DESC LIMIT 1""").fetchone()
+        ago = db.execute("""SELECT avg(pressure) AS pressure, avg(humidity) AS humidity FROM data
+                           WHERE pressure IS NOT NULL AND pressure != 'None' AND pressure > 0
+                             AND timedate > datetime('now', '-6.5 hours')
+                             AND timedate < datetime('now', '-5.5 hours')""").fetchone()
+        if not now or not ago or not ago["pressure"]:
+            return {"icon": "", "text": "", "detail": ""}
+
+        p_now, p_ago = now["pressure"], ago["pressure"]
+        h_now, h_ago = now["humidity"] or 0, ago["humidity"] or 0
+        p_diff = p_now - p_ago          # positive = rising
+        p_rate = p_diff / 6.0           # hPa per hour
+        h_diff = h_now - h_ago          # positive = getting wetter
+
+        # Forecast logic
+        if p_rate < -1.0:
+            # Rapid drop > 6 hPa in 6 hours
+            icon, text = "⛈", "Storm warning"
+        elif p_rate < -0.5 and h_diff > 5:
+            # Falling pressure + rising humidity
+            icon, text = "🌧", "Rain likely"
+        elif p_rate < -0.3:
+            # Moderate drop
+            icon, text = "↘", "Worsening"
+        elif p_rate > 0.5:
+            # Rising fast
+            icon, text = "☀", "Clear"
+        elif p_rate > 0.2:
+            # Rising moderately
+            icon, text = "↗", "Improving"
+        else:
+            # Stable
+            icon, text = "●", "Steady"
+
+        detail = f"{p_diff:+.1f} hPa/6h ({p_rate:+.2f}/h)"
+        return {"icon": icon, "text": text, "detail": detail}
+    except Exception:
+        return {"icon": "", "text": "", "detail": ""}
+
 def brief_data(fname):
     """Load latest reading + device params for a single sensor.
     Returns a dict with all fields needed by index.html and graph.html:
@@ -105,6 +151,8 @@ def brief_data(fname):
         maxv  = max_voltages(db)
         # Device config params (fw type, sensor, gpio, thresholds, etc.)
         params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
+        # Weather forecast from pressure/humidity trends
+        forecast = weather_forecast(db)
 
     # Voltage: ESP-IDF sends real volts, MicroPython needs normalization
     row["v"]   = round(row["voltage"]    / maxv["mv"]  * VBAT, 2) if maxv["mv"]  and row["voltage"]    and params.get("fw") != "espidf" else round(row["voltage"] or 0, 2)
@@ -153,6 +201,9 @@ def brief_data(fname):
     vs = row["vs"] or 0
     row["sol_color"] = "ok" if vs > 0 else "off"
     row["sol_sym"]   = "●" if vs > 0 else "○"
+
+    # Weather forecast (only for sensors with pressure)
+    row["forecast"] = forecast
 
     return row
 

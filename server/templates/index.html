@@ -37,6 +37,8 @@
   .r-bat.bad .value { color: #c62828 }
   .r-sol.ok .value { color: #e65100 }
   .r-sol.off .value { color: #aaa }
+  .card-forecast { margin-top: 10px; font-size: 15px; font-weight: 600; color: #555 }
+  .card-forecast .forecast-detail { font-size: 11px; font-weight: 400; color: #aaa }
   .card-footer { margin-top: 12px; font-size: 11px; color: #aaa; display: flex;
                  justify-content: space-between }
 </style>
@@ -79,6 +81,9 @@
     </div>
     {% endif %}
   </div>
+  {% if s.forecast.text %}
+  <div class="card-forecast">{{s.forecast.icon}} {{s.forecast.text}} <span class="forecast-detail">{{s.forecast.detail}}</span></div>
+  {% endif %}
   <div class="card-footer">
     <span>{{s.tztime}}</span>
     <span>{{s.sensor|default('')}}</span>

@@ -22,6 +22,8 @@
   .station-name:hover { color: #2196F3 }
   .station-time { color: #888; font-size: 14px }
   .offline-badge { color: #c00; font-weight: 700; font-size: 14px }
+  .station-forecast { font-size: 15px; font-weight: 600; color: #555 }
+  .station-forecast .forecast-detail { font-size: 11px; font-weight: 400; color: #aaa }
   .rename-form { display: none }
   .rename-form input[type=text] { font-size: 16px; padding: 4px 8px; border: 2px solid #2196F3;
     border-radius: 6px; width: 200px }
@@ -87,6 +89,7 @@
   </form>
   <span class="station-time">{{tztime}}</span>
   {% if offline %}<span class="offline-badge">OFFLINE</span>{% endif %}
+  {% if forecast.text %}<span class="station-forecast">{{forecast.icon}} {{forecast.text}} <span class="forecast-detail">{{forecast.detail}}</span></span>{% endif %}
 </div>
 
 <!-- Current readings -->
