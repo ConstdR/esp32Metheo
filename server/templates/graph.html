@@ -94,11 +94,11 @@
   <div class="readings">
     <div class="reading r-temp {{temp_color}}">
       <div class="label">🌡 Temperature</div>
-      <div class="value">{{temperature}}°</div>
+      <div class="value">{{temp_sym}} {{temperature}}°</div>
     </div>
     <div class="reading r-hum {{hum_color}}">
       <div class="label">💧 Humidity</div>
-      <div class="value">{{humidity}}%</div>
+      <div class="value">{{hum_sym}} {{humidity}}%</div>
     </div>
     {% if pressure %}
     <div class="reading r-pres">
@@ -108,12 +108,12 @@
     {% endif %}
     <div class="reading r-bat {{bat_color}}">
       <div class="label">🔋 Battery{% if low_bat %} ⚠{% endif %}</div>
-      <div class="value">{{v}}V</div>
+      <div class="value">{{bat_sym}} {{v}}V</div>
     </div>
     {% if mvs %}
     <div class="reading r-sol {{sol_color}}">
       <div class="label">☀ Solar</div>
-      <div class="value">{{vs}}V</div>
+      <div class="value">{{sol_sym}} {{vs}}V</div>
     </div>
     {% endif %}
   </div>
