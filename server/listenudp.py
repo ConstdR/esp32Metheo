@@ -19,6 +19,7 @@ import mqttudp.engine as me
 llg  = logging.getLogger(__name__)
 last = {}        # {topic: last_value} — for deduplication of identical packets
 last_store = {}  # {device_id: timestamp} — to prevent duplicate readings within time window
+dev_names = {}   # {device_id: name} — cached device names for logging
 DEDUP_WINDOW = 30  # seconds — ignore readings from same device within this window
 cfg  = None
 
@@ -66,10 +67,20 @@ def store_conf(wid, data):
     """Save device config (JSON key-value pairs) to the 'params' table.
     Each key becomes a row: name=key, value=value. Used by web.py to
     determine firmware type, GPIO pins, sensor type, thresholds, etc."""
+    parsed = json.loads(data)
     dbh, c = get_db(wid)
-    for k, v in json.loads(data).items():
+    for k, v in parsed.items():
         c.execute("INSERT OR REPLACE INTO params (name, value) VALUES (?,?)", (k, v))
     dbh.commit(); dbh.close()
+    # Cache device name if present in config (unlikely, but just in case)
+    # More commonly, name comes from web rename — load it from DB
+    try:
+        dbh2, c2 = get_db(wid)
+        row = c2.execute("SELECT value FROM params WHERE name='name'").fetchone()
+        if row: dev_names[wid] = row[0]
+        dbh2.close()
+    except Exception:
+        pass
 
 def store(wid, data, ip):
     """Save sensor reading to the 'data' table.
@@ -97,7 +108,18 @@ def store(wid, data, ip):
         last_store[wid] = now
         ddata['ts'] = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    llg.info(f"WID: {wid} JSON: {ddata}")
+    # Get device name for logging (from cache or DB)
+    name = dev_names.get(wid)
+    if not name:
+        try:
+            dbh0, c0 = get_db(wid)
+            row0 = c0.execute("SELECT value FROM params WHERE name='name'").fetchone()
+            if row0: name = dev_names[wid] = row0[0]
+            dbh0.close()
+        except Exception:
+            pass
+    label = f"{wid} ({name})" if name else wid
+    llg.info(f"WID: {label} JSON: {ddata}")
     dbh, c = get_db(wid)
     c.execute("""CREATE TABLE IF NOT EXISTS data (
                     timedate text primary key, ip text,
