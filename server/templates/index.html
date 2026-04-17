@@ -23,7 +23,8 @@
   .readings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
   .reading { padding: 8px; border-radius: 8px; background: #f8f9fa }
   .reading .value { font-size: 24px; font-weight: 700 }
-  .reading .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px }
+  .reading .label { font-size: 11px; color: #888; letter-spacing: 0.5px;
+                    margin-bottom: 2px }
   .r-temp .value { color: #25259a }
   .r-hum .value { color: #3d9e3d }
   .r-pres .value { color: #800080 }
@@ -47,22 +48,22 @@
   </div>
   <div class="readings">
     <div class="reading r-temp">
-      <div class="value">{{s.temperature}}°</div>
       <div class="label">Temperature</div>
+      <div class="value">{{s.temperature}}°</div>
     </div>
     <div class="reading r-hum">
-      <div class="value">{{s.humidity}}%</div>
       <div class="label">Humidity</div>
+      <div class="value">{{s.humidity}}%</div>
     </div>
     {% if s.pressure %}
     <div class="reading r-pres">
+      <div class="label">Pressure, hPa</div>
       <div class="value">{{s.pressure}}</div>
-      <div class="label">hPa</div>
     </div>
     {% endif %}
     <div class="reading r-volt{% if s.low_bat %} low{% endif %}">
-      <div class="value">{{s.v}}V</div>
       <div class="label">Battery{% if s.low_bat %} ⚠{% endif %}</div>
+      <div class="value">{{s.v}}V</div>
     </div>
   </div>
   <div class="card-footer">
