@@ -71,16 +71,17 @@ def store_conf(wid, data):
     dbh, c = get_db(wid)
     for k, v in parsed.items():
         c.execute("INSERT OR REPLACE INTO params (name, value) VALUES (?,?)", (k, v))
-    dbh.commit(); dbh.close()
-    # Cache device name if present in config (unlikely, but just in case)
-    # More commonly, name comes from web rename — load it from DB
+    dbh.commit()
+    # Load device name from DB and cache it
     try:
-        dbh2, c2 = get_db(wid)
-        row = c2.execute("SELECT value FROM params WHERE name='name'").fetchone()
+        row = c.execute("SELECT value FROM params WHERE name='name'").fetchone()
         if row: dev_names[wid] = row[0]
-        dbh2.close()
     except Exception:
         pass
+    dbh.close()
+    name = dev_names.get(wid)
+    label = f"{wid} ({name})" if name else wid
+    llg.info(f"CONF: {label} {parsed}")
 
 def store(wid, data, ip):
     """Save sensor reading to the 'data' table.
