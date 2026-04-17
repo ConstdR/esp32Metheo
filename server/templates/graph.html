@@ -235,7 +235,7 @@
   {% if rst %}· rst: {{rst}}{% endif %}
   ·
   {% endif %}
-  IP: {{ip}}
+  IP: {{ip}}{% if device_id %} · ID: {{device_id}}{% endif %}
 </div>
 {% if message %}<div class="footer" style="font-style:italic">{{message}}</div>{% endif %}
 

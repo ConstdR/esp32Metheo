@@ -48,7 +48,9 @@ def recv_packet(pkt):
     global last
     if pkt.ptype != me.PacketType['Publish']:           return
     # Skip duplicate packets (same topic + same payload as last time)
-    if last.get(pkt.topic) == pkt.value:                return
+    if last.get(pkt.topic) == pkt.value:
+        llg.debug(f"dup skipped: {pkt.topic}\t\t{pkt.addr}")
+        return
     last[pkt.topic] = pkt.value
     llg.debug(f"{pkt.topic}={pkt.value}\t\t{pkt.addr}")
     for pattern, handler in (
@@ -95,13 +97,15 @@ def store(wid, data, ip):
         last_store[wid] = now
         ddata['ts'] = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    llg.debug(f"WID: {wid} JSON: {ddata}")
+    llg.info(f"WID: {wid} JSON: {ddata}")
     dbh, c = get_db(wid)
     c.execute("""CREATE TABLE IF NOT EXISTS data (
                     timedate text primary key, ip text,
                     temperature real, humidity real, pressure real,
                     voltage real, voltagesun real, message text)""")
     c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
+    # Save device MAC as param (useful for display and identification)
+    c.execute("INSERT OR REPLACE INTO params (name, value) VALUES ('device_id', ?)", (wid,))
     ddata = {f: ddata.get(f) for f in DB_FIELDS}
     c.execute("""INSERT OR REPLACE INTO data
                     (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,message)
