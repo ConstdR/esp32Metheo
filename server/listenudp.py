@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 import mqttudp.engine as me
 
 llg  = logging.getLogger(__name__)
-last = {}   # {topic: last_value} — for deduplication
+last = {}        # {topic: last_value} — for deduplication of identical packets
+last_store = {}  # {device_id: timestamp} — to prevent duplicate readings within time window
+DEDUP_WINDOW = 30  # seconds — ignore readings from same device within this window
 cfg  = None
 
 # Fields to extract from sensor JSON → SQLite columns
@@ -68,10 +70,31 @@ def store_conf(wid, data):
     dbh.commit(); dbh.close()
 
 def store(wid, data, ip):
-    """Save sensor reading to the 'data' table. Timestamp is server UTC,
-    not the device's ts field (device RTC drifts significantly).
+    """Save sensor reading to the 'data' table.
+
+    Timestamp logic:
+      - If device sends 'ts' field (MicroPython batch upload) → use device ts.
+        Broadcast duplicates are handled by INSERT OR REPLACE (same ts = same PK).
+      - If no 'ts' (ESP-IDF firmware) → use server UTC time.
+        Dedup window prevents broadcast duplicates from creating multiple rows.
     Creates tables on first insert for new devices."""
     ddata = {**json.loads(data), 'ip': ip}
+
+    # Determine timestamp: device ts (MicroPython) or server UTC (ESP-IDF)
+    device_ts = ddata.get('ts')
+    if device_ts:
+        # MicroPython: use device timestamp, normalize T→space
+        ddata['ts'] = device_ts.replace("T", " ")
+    else:
+        # ESP-IDF: no ts in payload, use server time with dedup window
+        now = datetime.now(timezone.utc)
+        prev = last_store.get(wid)
+        if prev and (now - prev).total_seconds() < DEDUP_WINDOW:
+            llg.debug(f"WID: {wid} skipped (dedup {DEDUP_WINDOW}s)")
+            return
+        last_store[wid] = now
+        ddata['ts'] = now.strftime("%Y-%m-%d %H:%M:%S")
+
     llg.debug(f"WID: {wid} JSON: {ddata}")
     dbh, c = get_db(wid)
     c.execute("""CREATE TABLE IF NOT EXISTS data (
@@ -80,8 +103,6 @@ def store(wid, data, ip):
                     voltage real, voltagesun real, message text)""")
     c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
     ddata = {f: ddata.get(f) for f in DB_FIELDS}
-    # Use server UTC time — device RTC drifts
-    ddata["ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     c.execute("""INSERT OR REPLACE INTO data
                     (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,message)
                     VALUES (:ts,:ip,:t,:h,:p,:v,:vs,:m)""", ddata)
