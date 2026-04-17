@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
-"""MQTT/UDP listen and store data."""
+"""
+MQTT-UDP listener — receives sensor data and device config over UDP broadcast,
+stores measurements in per-device SQLite databases.
+
+Topics handled:
+  weather/<device_id>         → sensor readings (t, h, p, v, vs) → table "data"
+  weather/<device_id>/config  → device config (fw, sensor, gpio, etc.) → table "params"
+
+Deduplication: identical consecutive packets from the same topic are ignored
+(e.g. config packets that don't change between wake cycles).
+
+Timestamp is assigned by the server (UTC), not by the device.
+"""
 import argparse, configparser, logging, re, sqlite3, json
 from datetime import datetime, timezone
 import mqttudp.engine as me
 
 llg  = logging.getLogger(__name__)
-last = {}
+last = {}   # {topic: last_value} — for deduplication
 cfg  = None
 
+# Fields to extract from sensor JSON → SQLite columns
+# ts = server-assigned timestamp, ip = sender IP from UDP packet
 DB_FIELDS = ['ts','ip','t','h','p','v','vs','m']
 
 def main():
@@ -27,8 +41,11 @@ def get_db(wid):
     return dbh, dbh.cursor()
 
 def recv_packet(pkt):
+    """Callback for each MQTT-UDP packet. Filters by type, deduplicates,
+    and routes to store_conf() or store() based on topic pattern."""
     global last
     if pkt.ptype != me.PacketType['Publish']:           return
+    # Skip duplicate packets (same topic + same payload as last time)
     if last.get(pkt.topic) == pkt.value:                return
     last[pkt.topic] = pkt.value
     llg.debug(f"{pkt.topic}={pkt.value}\t\t{pkt.addr}")
@@ -42,12 +59,18 @@ def recv_packet(pkt):
             except Exception as e: llg.error(f"{handler.__name__} error: {e}")
 
 def store_conf(wid, data):
+    """Save device config (JSON key-value pairs) to the 'params' table.
+    Each key becomes a row: name=key, value=value. Used by web.py to
+    determine firmware type, GPIO pins, sensor type, thresholds, etc."""
     dbh, c = get_db(wid)
     for k, v in json.loads(data).items():
         c.execute("INSERT OR REPLACE INTO params (name, value) VALUES (?,?)", (k, v))
     dbh.commit(); dbh.close()
 
 def store(wid, data, ip):
+    """Save sensor reading to the 'data' table. Timestamp is server UTC,
+    not the device's ts field (device RTC drifts significantly).
+    Creates tables on first insert for new devices."""
     ddata = {**json.loads(data), 'ip': ip}
     llg.debug(f"WID: {wid} JSON: {ddata}")
     dbh, c = get_db(wid)

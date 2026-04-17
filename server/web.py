@@ -1,5 +1,22 @@
 #!/usr/bin/env python3
 # encoding: utf-8
+"""
+Web interface for ESP32 Weather Station.
+
+Serves:
+  /              — index page with all sensors as cards
+  /graph/<id>    — detail page with current values + history graphs
+  /csv/<id>      — CSV data for dygraph (used by graph.html via XHR)
+  /id/<id>       — POST endpoint for MicroPython bulk data upload (legacy)
+
+Each sensor has its own SQLite database (<device_id>.sqlite3) with:
+  - "data" table:   timestamped readings (temperature, humidity, pressure, voltage)
+  - "params" table: device config key-value pairs (fw, sensor type, gpio, etc.)
+
+Voltage normalization:
+  - ESP-IDF firmware sends calibrated voltages → displayed as-is
+  - MicroPython firmware sends raw ADC values → normalized using max-based scaling
+"""
 
 import argparse, configparser, logging, os, re, sqlite3, sys
 from contextlib import contextmanager
@@ -11,9 +28,9 @@ from aiohttp import web
 from dateutil.relativedelta import relativedelta
 import listenudp
 
-DEF_RANGE = 7
-VOLT_WIN  = "-60 day"
-VBAT, VSOL = 4.2, 6.0
+DEF_RANGE = 7            # default date range for graphs (days)
+VOLT_WIN  = "-60 day"    # window for max voltage calculation
+VBAT, VSOL = 4.2, 6.0   # nominal max voltages for MicroPython normalization
 
 lg  = logging.getLogger(__name__)
 env = jinja2.Environment(loader=jinja2.FileSystemLoader("templates"))
@@ -21,10 +38,13 @@ env = jinja2.Environment(loader=jinja2.FileSystemLoader("templates"))
 # -- helpers -----------------------------------------------------------------
 
 def dict_factory(cur, row):
+    """SQLite row factory: returns dict with column names as keys.
+    Replaces string "None" with empty string for cleaner templates."""
     return {c[0]: (row[i] if row[i] != "None" else "") for i, c in enumerate(cur.description)}
 
 @contextmanager
 def get_db(path):
+    """Context manager for SQLite connection with dict row factory."""
     dbh = sqlite3.connect(path)
     dbh.row_factory = dict_factory
     try:    yield dbh
@@ -37,6 +57,8 @@ def tmpl(name):         return env.get_template(name)
 def html(body):         return web.Response(content_type="text/html", charset="utf-8", body=body)
 
 def get_range(request):
+    """Parse date range from query string '2024-01-01 - 2024-01-07',
+    or default to last DEF_RANGE days."""
     raw = request.query.get("daterange", "")
     m   = re.match(r"(\d{4}-\d\d-\d\d).-.(\d{4}-\d\d-\d\d)", raw) if raw else None
     if m: return m.groups()
@@ -44,11 +66,14 @@ def get_range(request):
     return ((now - relativedelta(days=DEF_RANGE)).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
 
 def max_voltages(dbh):
+    """Get peak voltage and solar voltage from last VOLT_WIN period.
+    Used for MicroPython normalization (raw ADC → estimated real voltage)."""
     return dbh.execute(f"SELECT max(voltage) AS mv, max(voltagesun) AS mvs FROM data "
                        f"WHERE timedate > datetime(date('now'), '{VOLT_WIN}')").fetchone()
 
 def time_ago(utc_str):
-    """Return human-readable 'ago' string and seconds delta from UTC timestamp."""
+    """Convert UTC timestamp string to human-readable '5m ago' / '2h 30m ago' / '1d 3h ago'.
+    Returns (ago_string, delta_seconds). Used for index cards and offline detection."""
     try:
         last_dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         delta = (datetime.now(timezone.utc) - last_dt).total_seconds()
@@ -63,7 +88,12 @@ def time_ago(utc_str):
         return "", 0
 
 def brief_data(fname):
+    """Load latest reading + device params for a single sensor.
+    Returns a dict with all fields needed by index.html and graph.html:
+    temperature, humidity, pressure, voltage (v/vs), timing (ago, offline),
+    device config (fw, sensor, gpio pins), and display helpers (low_bat, period)."""
     with get_db(fname) as db:
+        # Latest sensor reading (local time for display, UTC for age calc)
         row   = db.execute("""SELECT round(temperature,1) AS temperature,
                       round(humidity,1) AS humidity,
                       round(pressure,1) AS pressure,
@@ -73,27 +103,34 @@ def brief_data(fname):
                       timedate
                       FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
         maxv  = max_voltages(db)
+        # Device config params (fw type, sensor, gpio, thresholds, etc.)
         params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
 
+    # Voltage: ESP-IDF sends real volts, MicroPython needs normalization
     row["v"]   = round(row["voltage"]    / maxv["mv"]  * VBAT, 2) if maxv["mv"]  and row["voltage"]    and params.get("fw") != "espidf" else round(row["voltage"] or 0, 2)
     row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * VSOL, 2) if maxv["mvs"] and row["voltagesun"] and params.get("fw") != "espidf" else round(row["voltagesun"] or 0, 2)
     row["mvs"] = maxv["mvs"]
     row["raw_volts"] = params.get("fw") == "espidf"
+
+    # Merge device params into row (fw, sensor, sleep, led, i2c_*, etc.)
     row.update(params)
     row.setdefault("name", "_new_")
 
+    # Calculate sleep period in seconds (for refresh timer and offline detection)
     if params.get("fw") == "espidf":
+        # ESP-IDF: sleep value is in minutes (from menuconfig)
         sleep_sec = int(row.get("sleep", 15)) * 60
     else:
+        # MicroPython: sleep value is in milliseconds
         sleep_ms = int(row.get("sleep", 900_000))
         sleep_sec = sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
-    row["period"] = sleep_sec 
+    row["period"] = sleep_sec
 
-    # Time since last reading + offline detection
+    # Time since last reading + offline detection (>2.5× sleep = offline)
     row["ago"], delta = time_ago(row.get("timedate", ""))
     row["offline"] = delta > sleep_sec * 2.5 if delta else False
 
-    # Low battery: check if lowb threshold is set and voltage is below it
+    # Low battery flag: voltage below threshold from device config (lowb in mV)
     try:
         lowb_v = int(row.get("lowb", 0)) / 1000.0
         row["low_bat"] = lowb_v > 0 and row["v"] > 0 and row["v"] < lowb_v
@@ -110,6 +147,8 @@ async def favicon(request):
     return res
 
 async def store(request):
+    """Legacy endpoint for MicroPython bulk upload: POST /id/<device_id>
+    Body: {"measures": ["2024-01-01 12:00:00,21.5,45,1013,3.8,0,msg", ...]}"""
     measures = (await request.json())["measures"]
     path = db_path(cfg(request), sid(request))
     lg.info(f"Post {len(measures)} rows {measures[0].split(',')[0]} → {measures[-1].split(',')[0]} UTC")
@@ -122,6 +161,9 @@ async def store(request):
     return web.Response(text="OK")
 
 async def graph(request):
+    """Detail page for a single sensor: current values + history graphs.
+    Supports ?rename=NewName to rename the sensor.
+    Supports ?daterange=YYYY-MM-DD - YYYY-MM-DD to select graph period."""
     path = db_path(cfg(request), sid(request))
     if not os.path.isfile(path): raise web.HTTPNotFound(text="Not here.")
     if "rename" in request.query:
@@ -130,11 +172,13 @@ async def graph(request):
             db.commit()
         raise web.HTTPFound(location=f"/graph/{sid(request)}")
     info = brief_data(path)
+    # refreshtime = half the sleep period (page reloads between measurements)
     info |= {"id": sid(request), "refreshtime": int(info["period"] / 2)}
     info["startdate"], info["enddate"] = get_range(request)
     return html(tmpl("graph.html").render(info))
 
 async def index(request):
+    """Main page: card for each sensor with current readings."""
     sensors = {}
     for name in os.listdir(cfg(request)["dbdir"]):
         if not name.endswith(".sqlite3"): continue
@@ -143,11 +187,14 @@ async def index(request):
     return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": 450}))
 
 async def csv_get(request):
+    """CSV data for dygraph charts. Columns: time, temperature, humidity,
+    pressure, voltage, solar_voltage. Voltage is normalized for MicroPython
+    devices, raw for ESP-IDF."""
     startdate, enddate = get_range(request)
     with get_db(db_path(cfg(request), sid(request))) as db:
         params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
         if params.get("fw") == "espidf":
-            v, vs = 1, 1  # raw volts, no normalization
+            v, vs = 1, 1  # raw volts, no normalization needed
         else:
             maxv = max_voltages(db)
             v  = VBAT / maxv["mv"]  if maxv["mv"]  else 0
@@ -171,7 +218,9 @@ def main():
     c = config["default"]
     logging.basicConfig(level=c["debug"],
                         format="%(asctime)s %(name)s.%(lineno)s %(levelname)s: %(message)s")
+    # Start UDP listener in a separate process
     Process(target=listenudp.main).start()
+    # Start web server
     app = web.Application()
     app["cfg"] = c
     app.add_routes([web.get("/", index), web.get(r"/csv/{id}", csv_get),
