@@ -65,6 +65,12 @@
       <div class="label">Battery{% if s.low_bat %} ⚠{% endif %}</div>
       <div class="value">{{s.v}}V</div>
     </div>
+    {% if s.mvs %}
+    <div class="reading r-volt">
+      <div class="label">Solar</div>
+      <div class="value">{{s.vs}}V</div>
+    </div>
+    {% endif %}
   </div>
   <div class="card-footer">
     <span>{{s.tztime}}</span>
