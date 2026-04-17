@@ -25,11 +25,18 @@
   .reading .value { font-size: 24px; font-weight: 700 }
   .reading .label { font-size: 11px; color: #888; letter-spacing: 0.5px;
                     margin-bottom: 2px }
-  .r-temp .value { color: #25259a }
-  .r-hum .value { color: #3d9e3d }
+  .r-temp.cold .value { color: #1565c0 }
+  .r-temp.ok .value { color: #2e7d32 }
+  .r-temp.hot .value { color: #c62828 }
+  .r-hum.ok .value { color: #2e7d32 }
+  .r-hum.warn .value { color: #e65100 }
+  .r-hum.bad .value { color: #c62828 }
   .r-pres .value { color: #800080 }
-  .r-volt .value { color: #008080 }
-  .r-volt.low .value { color: #c00 }
+  .r-bat.ok .value { color: #2e7d32 }
+  .r-bat.warn .value { color: #e65100 }
+  .r-bat.bad .value { color: #c62828 }
+  .r-sol.ok .value { color: #e65100 }
+  .r-sol.off .value { color: #aaa }
   .card-footer { margin-top: 12px; font-size: 11px; color: #aaa; display: flex;
                  justify-content: space-between }
 </style>
@@ -47,27 +54,27 @@
     </span>
   </div>
   <div class="readings">
-    <div class="reading r-temp">
-      <div class="label">Temperature</div>
+    <div class="reading r-temp {{s.temp_color}}">
+      <div class="label">🌡 Temperature</div>
       <div class="value">{{s.temperature}}°</div>
     </div>
-    <div class="reading r-hum">
-      <div class="label">Humidity</div>
+    <div class="reading r-hum {{s.hum_color}}">
+      <div class="label">💧 Humidity</div>
       <div class="value">{{s.humidity}}%</div>
     </div>
     {% if s.pressure %}
     <div class="reading r-pres">
-      <div class="label">Pressure, hPa</div>
+      <div class="label">🔵 Pressure, hPa</div>
       <div class="value">{{s.pressure}}</div>
     </div>
     {% endif %}
-    <div class="reading r-volt{% if s.low_bat %} low{% endif %}">
-      <div class="label">Battery{% if s.low_bat %} ⚠{% endif %}</div>
+    <div class="reading r-bat {{s.bat_color}}">
+      <div class="label">🔋 Battery{% if s.low_bat %} ⚠{% endif %}</div>
       <div class="value">{{s.v}}V</div>
     </div>
     {% if s.mvs %}
-    <div class="reading r-volt">
-      <div class="label">Solar</div>
+    <div class="reading r-sol {{s.sol_color}}">
+      <div class="label">☀ Solar</div>
       <div class="value">{{s.vs}}V</div>
     </div>
     {% endif %}

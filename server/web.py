@@ -137,6 +137,19 @@ def brief_data(fname):
     except (ValueError, TypeError):
         row["low_bat"] = False
 
+    # Color classes for readings (used in templates)
+    t = row["temperature"] or 0
+    row["temp_color"] = "cold" if t < 0 else ("hot" if t > 25 else "ok")
+
+    h = row["humidity"] or 0
+    row["hum_color"] = "ok" if 40 <= h <= 60 else ("warn" if 20 <= h <= 80 else "bad")
+
+    v = row["v"] or 0
+    row["bat_color"] = "ok" if v > 3.8 else ("warn" if v > 3.5 else "bad")
+
+    vs = row["vs"] or 0
+    row["sol_color"] = "ok" if vs > 1 else "off"
+
     return row
 
 # -- route handlers ----------------------------------------------------------

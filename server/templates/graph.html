@@ -36,11 +36,18 @@
   .reading .value { font-size: 32px; font-weight: 700 }
   .reading .label { font-size: 11px; color: #888; letter-spacing: 0.5px;
                     margin-bottom: 2px }
-  .r-temp .value { color: #25259a }
-  .r-hum .value { color: #3d9e3d }
+  .r-temp.cold .value { color: #1565c0 }
+  .r-temp.ok .value { color: #2e7d32 }
+  .r-temp.hot .value { color: #c62828 }
+  .r-hum.ok .value { color: #2e7d32 }
+  .r-hum.warn .value { color: #e65100 }
+  .r-hum.bad .value { color: #c62828 }
   .r-pres .value { color: #800080 }
-  .r-volt .value { color: #008080 }
-  .r-volt.low .value { color: #c00 }
+  .r-bat.ok .value { color: #2e7d32 }
+  .r-bat.warn .value { color: #e65100 }
+  .r-bat.bad .value { color: #c62828 }
+  .r-sol.ok .value { color: #e65100 }
+  .r-sol.off .value { color: #aaa }
 
   /* ── Date range + countdown ── */
   .controls { background: #fff; border-radius: 12px; padding: 14px 20px;
@@ -85,27 +92,27 @@
 <!-- Current readings -->
 <div class="current">
   <div class="readings">
-    <div class="reading r-temp">
-      <div class="label">Temperature</div>
+    <div class="reading r-temp {{temp_color}}">
+      <div class="label">🌡 Temperature</div>
       <div class="value">{{temperature}}°</div>
     </div>
-    <div class="reading r-hum">
-      <div class="label">Humidity</div>
+    <div class="reading r-hum {{hum_color}}">
+      <div class="label">💧 Humidity</div>
       <div class="value">{{humidity}}%</div>
     </div>
     {% if pressure %}
     <div class="reading r-pres">
-      <div class="label">Pressure, hPa</div>
+      <div class="label">🔵 Pressure, hPa</div>
       <div class="value">{{pressure}}</div>
     </div>
     {% endif %}
-    <div class="reading r-volt{% if low_bat %} low{% endif %}">
-      <div class="label">Battery{% if low_bat %} ⚠{% endif %}</div>
+    <div class="reading r-bat {{bat_color}}">
+      <div class="label">🔋 Battery{% if low_bat %} ⚠{% endif %}</div>
       <div class="value">{{v}}V</div>
     </div>
     {% if mvs %}
-    <div class="reading r-volt">
-      <div class="label">Solar</div>
+    <div class="reading r-sol {{sol_color}}">
+      <div class="label">☀ Solar</div>
       <div class="value">{{vs}}V</div>
     </div>
     {% endif %}
@@ -122,30 +129,30 @@
 
 <!-- Graphs -->
 <div class="graph-section">
-  <div class="graph-label">Temperature °C</div>
+  <div class="graph-label">🌡 Temperature °C</div>
   <div class="graph-container" id="temperature"></div>
 </div>
 
 {% if pressure %}
 <div class="graph-section">
-  <div class="graph-label">Pressure hPa</div>
+  <div class="graph-label">🔵 Pressure, hPa</div>
   <div class="graph-container" id="pressure"></div>
 </div>
 {% endif %}
 
 <div class="graph-section">
-  <div class="graph-label">Humidity %</div>
+  <div class="graph-label">💧 Humidity %</div>
   <div class="graph-container" id="humidity"></div>
 </div>
 
 <div class="graph-section">
-  <div class="graph-label">Battery V</div>
+  <div class="graph-label">🔋 Battery V</div>
   <div class="graph-container" id="battery"></div>
 </div>
 
 {% if mvs %}
 <div class="graph-section">
-  <div class="graph-label">Solar V</div>
+  <div class="graph-label">☀ Solar V</div>
   <div class="graph-container" id="solar"></div>
 </div>
 {% endif %}
