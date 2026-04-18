@@ -214,6 +214,7 @@
   {% if pressure %}
   makeDg("pressure", [false,false,true,false,false], "#800080",
          [{y:1013, color:'rgba(0,0,255,0.4)'}]);
+         [{y:972, color:'rgba(0,0,255,0.4)'}]);  // normal pressure at 345m elevation (1013 - ~41) 345m * 12 / 100 ≈ 41 hPa
   {% endif %}
 
   makeDg("battery", [false,false,false,true,false], "#008080");
