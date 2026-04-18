@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="560" viewBox="0 0 720 560" font-family="system-ui, -apple-system, sans-serif">
+  <style>
+    .box { stroke-width: 1.5; rx: 8 }
+    .label { font-size: 14px; font-weight: 600; fill: #333 }
+    .sublabel { font-size: 11px; fill: #666 }
+    .pin { font-size: 11px; fill: #555; font-family: monospace }
+    .arr { stroke: #555; stroke-width: 1.2; fill: none; marker-end: url(#ah) }
+    .arr-dash { stroke: #888; stroke-width: 1.2; fill: none; stroke-dasharray: 5 3; marker-end: url(#ah) }
+    .note { font-size: 10px; fill: #888; font-style: italic }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="inherit" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Solar panel -->
+  <rect x="40" y="30" width="150" height="55" class="box" fill="#FFF8E1" stroke="#E6A817"/>
+  <text x="115" y="52" text-anchor="middle" class="label" fill="#8B6914">Solar panel</text>
+  <text x="115" y="70" text-anchor="middle" class="sublabel">5–6V (optional)</text>
+
+  <!-- Arrow: Solar → FC-75 -->
+  <line x1="115" y1="85" x2="115" y2="130" class="arr" stroke="#E6A817"/>
+
+  <!-- FC-75 charger -->
+  <rect x="40" y="132" width="150" height="55" class="box" fill="#FFF0E8" stroke="#D85A30"/>
+  <text x="115" y="154" text-anchor="middle" class="label" fill="#8B3A1F">FC-75 charger</text>
+  <text x="115" y="172" text-anchor="middle" class="sublabel">TC4056A, USB/solar in</text>
+
+  <!-- Arrow: FC-75 → Battery -->
+  <line x1="115" y1="187" x2="115" y2="240" class="arr" stroke="#D85A30"/>
+
+  <!-- Battery -->
+  <rect x="40" y="242" width="150" height="55" class="box" fill="#E8F5E9" stroke="#388E3C"/>
+  <text x="115" y="264" text-anchor="middle" class="label" fill="#2E7D32">18650 Li-Ion</text>
+  <text x="115" y="282" text-anchor="middle" class="sublabel">3.0 – 4.2V</text>
+
+  <!-- ESP32 main block -->
+  <rect x="320" y="100" width="200" height="310" rx="12" fill="#E3F2FD" stroke="#1976D2" stroke-width="1.5"/>
+  <text x="420" y="130" text-anchor="middle" class="label" fill="#0D47A1" font-size="16">ESP32</text>
+
+  <!-- ESP32 pin labels -->
+  <text x="340" y="168" class="pin">VIN (3.3V LDO)</text>
+  <text x="340" y="198" class="pin">SDA</text>
+  <text x="340" y="222" class="pin">SCL</text>
+  <text x="340" y="258" class="pin">ADC (battery)</text>
+  <text x="340" y="288" class="pin">ADC (solar)</text>
+  <text x="340" y="325" class="pin">GPIO (LED)</text>
+  <text x="340" y="370" class="pin">WiFi</text>
+  <text x="340" y="390" class="sublabel">MQTT-UDP broadcast</text>
+
+  <!-- BME280 / SHT30 -->
+  <rect x="570" y="170" width="120" height="60" class="box" fill="#E0F2F1" stroke="#00897B"/>
+  <text x="630" y="194" text-anchor="middle" class="label" fill="#00695C">BME280</text>
+  <text x="630" y="212" text-anchor="middle" class="sublabel">or SHT30</text>
+
+  <!-- LED -->
+  <rect x="570" y="305" width="120" height="44" class="box" fill="#FCE4EC" stroke="#C2185B"/>
+  <text x="630" y="332" text-anchor="middle" class="label" fill="#880E4F">LED</text>
+
+  <!-- Server -->
+  <rect x="320" y="460" width="200" height="55" class="box" fill="#EDE7F6" stroke="#7B1FA2"/>
+  <text x="420" y="482" text-anchor="middle" class="label" fill="#4A148C">Server</text>
+  <text x="420" y="500" text-anchor="middle" class="sublabel">listenudp.py + web.py</text>
+
+  <!-- Voltage divider: battery -->
+  <rect x="225" y="248" width="55" height="32" rx="4" fill="#F5F5F5" stroke="#999"/>
+  <text x="252" y="268" text-anchor="middle" class="sublabel">R 1:2</text>
+
+  <!-- Voltage divider: solar -->
+  <rect x="225" y="310" width="55" height="32" rx="4" fill="#F5F5F5" stroke="#999"/>
+  <text x="252" y="334" text-anchor="middle" class="sublabel">R 1:2</text>
+
+  <!-- Arrow: Battery → ESP32 VIN -->
+  <path d="M190 265 L210 265 L210 168 L318 168" class="arr" stroke="#388E3C"/>
+
+  <!-- Arrow: Battery → R divider bat -->
+  <line x1="190" y1="268" x2="223" y2="264" class="arr" stroke="#666"/>
+
+  <!-- Arrow: R divider bat → ADC -->
+  <line x1="280" y1="264" x2="318" y2="258" class="arr" stroke="#666"/>
+
+  <!-- Arrow: Solar tap → R divider solar -->
+  <path d="M115 85 L115 110 L205 110 L205 326 L223 326" class="arr" stroke="#E6A817"/>
+
+  <!-- Arrow: R divider solar → ADC -->
+  <line x1="280" y1="326" x2="318" y2="288" class="arr" stroke="#666"/>
+
+  <!-- Arrow: ESP32 I2C → Sensor -->
+  <line x1="520" y1="205" x2="568" y2="200" class="arr" stroke="#00897B"/>
+  <text x="544" y="196" text-anchor="middle" class="note">I2C</text>
+
+  <!-- Arrow: ESP32 GPIO → LED -->
+  <line x1="520" y1="325" x2="568" y2="327" class="arr" stroke="#C2185B"/>
+
+  <!-- Arrow: ESP32 → Server (WiFi) -->
+  <path d="M420 410 L420 458" class="arr-dash" stroke="#7B1FA2"/>
+
+  <!-- Notes -->
+  <text x="252" y="245" text-anchor="middle" class="note">110k/110k</text>
+  <text x="252" y="308" text-anchor="middle" class="note">110k/110k</text>
+  <text x="445" y="440" class="note">UDP broadcast</text>
+</svg>
