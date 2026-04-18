@@ -220,10 +220,53 @@ Config is stored in `params` table and displayed in the web interface footer.
 
 ## Server
 
+### Quick start (Docker)
+
 ```bash
 cd server
-./start.sh
+make build       # build Docker image
+make run         # run with host network (recommended for UDP broadcast)
 ```
+
+### Quick start (without Docker)
+
+```bash
+cd server
+pip install aiohttp jinja2 python-dateutil
+./web.py         # or: ./start.sh (runs in tmux)
+```
+
+### Docker commands (`make help`)
+
+| Command | Description |
+|---------|-------------|
+| `make build` | Build Docker image + create logrotate config |
+| `make run` | Run with host network (needed for UDP broadcast reception) |
+| `make run-bridge` | Run with bridge network, ports 8088 + 1883/udp mapped |
+| `make restart` | Stop, remove, rebuild and start |
+| `make stop` | Stop container |
+| `make rm` | Remove container |
+| `make shell` | Shell into running container |
+| `make attach` | Attach to running container |
+
+Container mounts `server/` directory as `/serv`, so SQLite databases
+and config persist on the host. Timezone set to `Europe/Prague` in Dockerfile.
+
+### Configuration (`config.cfg`)
+
+```ini
+[default]
+debug = ERROR        # web.py log level
+host = 0.0.0.0
+port = 8088
+dbdir = ./           # SQLite databases directory
+
+[listener]
+debug = DEBUG        # listenudp.py log level (DEBUG shows all packets)
+dbdir = ./
+```
+
+### Components
 
 * **`listenudp.py`** — MQTT-UDP listener, stores sensor data and device config to per-device SQLite databases. Server-side timestamps (UTC). Smart deduplication: MicroPython batch packets use device `ts`, ESP-IDF uses 30s dedup window.
 * **`web.py`** — web interface (aiohttp):
@@ -231,7 +274,6 @@ cd server
   * **Graph page** — current values + dygraph history charts, date range picker, auto-refresh countdown
   * **Weather forecast** — simple barometric forecast based on 6-hour pressure and humidity trends
   * **CSV endpoint** — data export for graphs
-* Docker support via `Dockerfile` / `Makefile`
 
 ### Web interface features
 
