@@ -206,14 +206,14 @@
   }
 
   makeDg("temperature", [true,false,false,false,false], "#1b5e20",
-         [{y:0, color:'rgba(0,0,255,0.4)'}, {y:20, color:'rgba(255,0,0,0.4)'}]);
+         [{y:{{th.graph_temp_low}}, color:'rgba(0,0,255,0.4)'}, {y:{{th.graph_temp_high}}, color:'rgba(255,0,0,0.4)'}]);
 
   makeDg("humidity", [false,true,false,false,false], "#3d9e3d",
-         [{y:50, color:'rgba(0,0,255,0.4)'}]);
+         [{y:{{th.graph_humidity_normal}}, color:'rgba(0,0,255,0.4)'}]);
 
   {% if pressure %}
   makeDg("pressure", [false,false,true,false,false], "#800080",
-         [{y:972, color:'rgba(0,0,255,0.4)'}]);  // normal pressure at 345m elevation (1013 - ~41) 345m * 12 / 100 ≈ 41 hPa
+         [{y:{{th.pressure_normal}}, color:'rgba(0,0,255,0.4)'}]);  // local barometric reference (set in config.cfg)
   {% endif %}
 
   var lowb = {{lowb|default(0)}};

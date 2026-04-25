@@ -28,9 +28,9 @@ from aiohttp import web
 from dateutil.relativedelta import relativedelta
 import listenudp
 
-DEF_RANGE = 7            # default date range for graphs (days)
-VOLT_WIN  = "-60 day"    # window for max voltage calculation
-VBAT, VSOL = 4.2, 6.0   # nominal max voltages for MicroPython normalization
+# Thresholds loaded from config.cfg [thresholds] section at startup.
+# All numeric values are stored as floats; keys match config option names.
+TH = {}
 
 lg  = logging.getLogger(__name__)
 env = jinja2.Environment(loader=jinja2.FileSystemLoader("templates"))
@@ -58,18 +58,18 @@ def html(body):         return web.Response(content_type="text/html", charset="u
 
 def get_range(request):
     """Parse date range from query string '2024-01-01 - 2024-01-07',
-    or default to last DEF_RANGE days."""
+    or default to last default_range_days days."""
     raw = request.query.get("daterange", "")
     m   = re.match(r"(\d{4}-\d\d-\d\d).-.(\d{4}-\d\d-\d\d)", raw) if raw else None
     if m: return m.groups()
     now = datetime.now()
-    return ((now - relativedelta(days=DEF_RANGE)).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
+    return ((now - relativedelta(days=TH["default_range_days"])).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
 
 def max_voltages(dbh):
-    """Get peak voltage and solar voltage from last VOLT_WIN period.
+    """Get peak voltage and solar voltage from last volt_max_window_days period.
     Used for MicroPython normalization (raw ADC → estimated real voltage)."""
     return dbh.execute(f"SELECT max(voltage) AS mv, max(voltagesun) AS mvs FROM data "
-                       f"WHERE timedate > datetime(date('now'), '{VOLT_WIN}')").fetchone()
+                       f"WHERE timedate > datetime(date('now'), '-{TH["volt_max_window_days"]} day')").fetchone()
 
 def time_ago(utc_str):
     """Convert UTC timestamp string to human-readable '5m ago' / '2h 30m ago' / '1d 3h ago'.
@@ -109,23 +109,17 @@ def weather_forecast(db):
         h_diff = h_now - h_ago          # positive = getting wetter
 
         # Forecast logic
-        if p_rate < -1.0:
-            # Rapid drop > 6 hPa in 6 hours
+        if p_rate < TH["forecast_storm"]:
             icon, text = "⛈", "Storm warning"
-        elif p_rate < -0.5 and h_diff > 5:
-            # Falling pressure + rising humidity
+        elif p_rate < TH["forecast_storm"] / 2 and h_diff > TH["forecast_rain_hum_diff"]:
             icon, text = "🌧", "Rain likely"
-        elif p_rate < -0.3:
-            # Moderate drop
+        elif p_rate < TH["forecast_worsening"]:
             icon, text = "↘", "Worsening"
-        elif p_rate > 0.5:
-            # Rising fast
+        elif p_rate > TH["forecast_clear"]:
             icon, text = "☀", "Clear"
-        elif p_rate > 0.2:
-            # Rising moderately
+        elif p_rate > TH["forecast_improving"]:
             icon, text = "↗", "Improving"
         else:
-            # Stable
             icon, text = "●", "Steady"
 
         detail = f"{p_diff:+.1f} hPa/6h ({p_rate:+.2f}/h)"
@@ -155,8 +149,8 @@ def brief_data(fname):
         forecast = weather_forecast(db)
 
     # Voltage: ESP-IDF sends real volts, MicroPython needs normalization
-    row["v"]   = round(row["voltage"]    / maxv["mv"]  * VBAT, 2) if maxv["mv"]  and row["voltage"]    and params.get("fw") != "espidf" else round(row["voltage"] or 0, 2)
-    row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * VSOL, 2) if maxv["mvs"] and row["voltagesun"] and params.get("fw") != "espidf" else round(row["voltagesun"] or 0, 2)
+    row["v"]   = round(row["voltage"]    / maxv["mv"]  * TH["nominal_battery_v"], 2) if maxv["mv"]  and row["voltage"]    and params.get("fw") != "espidf" else round(row["voltage"] or 0, 2)
+    row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * TH["nominal_solar_v"], 2) if maxv["mvs"] and row["voltagesun"] and params.get("fw") != "espidf" else round(row["voltagesun"] or 0, 2)
     row["mvs"] = maxv["mvs"]
     row["raw_volts"] = params.get("fw") == "espidf"
 
@@ -187,16 +181,22 @@ def brief_data(fname):
 
     # Color classes and indicator symbols for readings (● = ok, ▲ = high, ▼ = low)
     t = row["temperature"] or 0
-    row["temp_color"] = "cold" if t < 0 else ("hot" if t > 25 else "ok")
-    row["temp_sym"]   = "▼" if t < 0 else ("▲" if t > 25 else "●")
+    row["temp_color"] = "cold" if t < TH["temp_cold"] else ("hot" if t > TH["temp_hot"] else "ok")
+    row["temp_sym"]   = "▼" if t < TH["temp_cold"] else ("▲" if t > TH["temp_hot"] else "●")
 
     h = row["humidity"] or 0
-    row["hum_color"] = "ok" if 40 <= h <= 60 else ("warn" if 20 <= h <= 80 else "bad")
-    row["hum_sym"]   = "●" if 40 <= h <= 60 else ("▼" if h < 40 else "▲")
+    if TH["hum_ok_low"] <= h <= TH["hum_ok_high"]:
+        row["hum_color"], row["hum_sym"] = "ok", "●"
+    elif TH["hum_dry_low"] <= h <= TH["hum_wet_high"]:
+        row["hum_color"] = "warn"
+        row["hum_sym"]   = "▼" if h < TH["hum_ok_low"] else "▲"
+    else:
+        row["hum_color"] = "bad"
+        row["hum_sym"]   = "▼" if h < TH["hum_ok_low"] else "▲"
 
     v = row["v"] or 0
-    row["bat_color"] = "ok" if v > 3.8 else ("warn" if v > 3.5 else "bad")
-    row["bat_sym"]   = "●" if v > 3.8 else "▼"
+    row["bat_color"] = "ok" if v > TH["bat_ok"] else ("warn" if v > TH["bat_warn"] else "bad")
+    row["bat_sym"]   = "●" if v > TH["bat_ok"] else "▼"
 
     vs = row["vs"] or 0
     row["sol_color"] = "ok" if vs > 0 else "off"
@@ -245,7 +245,7 @@ async def graph(request):
         raise web.HTTPFound(location=f"/graph/{sid(request)}")
     info = brief_data(path)
     # refreshtime = half the sleep period (page reloads between measurements)
-    info |= {"id": sid(request), "refreshtime": int(info["period"] / 2)}
+    info |= {"id": sid(request), "refreshtime": int(info["period"] / 2), "th": TH}
     info["startdate"], info["enddate"] = get_range(request)
     return html(tmpl("graph.html").render(info))
 
@@ -271,8 +271,8 @@ async def csv_get(request):
             v, vs = 1, 1  # raw volts, no normalization needed
         else:
             maxv = max_voltages(db)
-            v  = VBAT / maxv["mv"]  if maxv["mv"]  else 0
-            vs = VSOL / maxv["mvs"] if maxv["mvs"] else 0
+            v  = TH["nominal_battery_v"] / maxv["mv"]  if maxv["mv"]  else 0
+            vs = TH["nominal_solar_v"] / maxv["mvs"] if maxv["mvs"] else 0
         rows = db.execute("""SELECT temperature, humidity, pressure,
                       voltage*? AS voltage, voltagesun*? AS voltagesun,
                       datetime(timedate,'localtime') AS tztime FROM data
@@ -285,11 +285,17 @@ async def csv_get(request):
 # -- startup -----------------------------------------------------------------
 
 def main():
+    global TH
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", default="config.cfg")
     args   = parser.parse_args()
     config = configparser.ConfigParser(); config.read(args.config)
     c = config["default"]
+    # Load all numeric thresholds from [thresholds] section
+    if "thresholds" in config:
+        for k, v in config["thresholds"].items():
+            try:    TH[k] = float(v)
+            except ValueError: TH[k] = v
     logging.basicConfig(level=c["debug"],
                         format="%(asctime)s %(name)s.%(lineno)s %(levelname)s: %(message)s")
     # Start UDP listener in a separate process
