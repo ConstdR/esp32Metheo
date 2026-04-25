@@ -216,7 +216,9 @@
          [{y:972, color:'rgba(0,0,255,0.4)'}]);  // normal pressure at 345m elevation (1013 - ~41) 345m * 12 / 100 ≈ 41 hPa
   {% endif %}
 
-  makeDg("battery", [false,false,false,true,false], "#008080");
+  var lowb = {{lowb|default(0)}};
+  makeDg("battery", [false,false,false,true,false], "#008080",
+         lowb ? [{y: lowb/1000, color:'rgba(255,165,0,0.5)'}] : undefined);
 
   {% if mvs %}
   makeDg("solar", [false,false,false,false,true], "#8080f0");
