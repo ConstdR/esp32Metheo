@@ -294,7 +294,7 @@ def main():
     app.add_routes([web.get("/", index), web.get(r"/csv/{id}", csv_get),
                     web.get(r"/graph/{id}", graph), web.post(r"/id/{id}", store),
                     web.get("/favicon.ico", favicon), web.static("/static", "static")])
-    lg.error(f"Web running on http://{c['host']}:{c['port']}")
+    lg.warning(f"Web running on http://{c['host']}:{c['port']}")
     web.run_app(app, host=c["host"], port=int(c["port"]))
 
 if __name__ == "__main__":
