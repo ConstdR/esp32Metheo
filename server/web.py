@@ -258,7 +258,7 @@ async def index(request):
         except Exception as e: lg.error(f"Bad data in {name}: {e}")
     # Refresh = half of shortest sleep period among sensors (default 450s if none)
     refresh = min((s["period"] for s in sensors.values() if s.get("period")), default=900) // 2
-    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": max(refresh, 30)}))
+    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": max(refresh, 120)}))
 
 async def csv_get(request):
     """CSV data for dygraph charts. Columns: time, temperature, humidity,
