@@ -127,6 +127,61 @@ def weather_forecast(db):
     except Exception:
         return {"icon": "", "text": "", "detail": ""}
 
+# -- data processing helpers -------------------------------------------------
+
+def is_espidf(params):
+    """True if device runs ESP-IDF firmware (vs legacy MicroPython)."""
+    return params.get("fw") == "espidf"
+
+def norm_voltage(raw, peak, nominal, espidf):
+    """Normalize raw voltage to volts.
+    ESP-IDF sends calibrated volts → return as-is. MicroPython sends raw ADC →
+    scale by peak-based factor. Falls back to raw value if peak unavailable."""
+    raw = raw or 0
+    if espidf or not peak or not raw:
+        return round(raw, 2)
+    return round(raw / peak * nominal, 2)
+
+def sleep_seconds(params):
+    """Sleep period in seconds. ESP-IDF stores minutes, MicroPython stores ms."""
+    if is_espidf(params):
+        return int(params.get("sleep", 15)) * 60
+    sleep_ms = int(params.get("sleep", 900_000))
+    return sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
+
+def is_low_bat(v, params):
+    """True if voltage below device-configured 'lowb' threshold (stored in mV)."""
+    try:
+        lowb_v = int(params.get("lowb", 0)) / 1000.0
+        return lowb_v > 0 and v > 0 and v < lowb_v
+    except (ValueError, TypeError):
+        return False
+
+# Status helpers — each returns (color_class, symbol) for templates.
+# ● = ok, ▲ = high, ▼ = low, ○ = inactive
+
+def temp_status(t):
+    if t < TH["temp_cold"]: return "cold", "▼"
+    if t > TH["temp_hot"]:  return "hot",  "▲"
+    return "ok", "●"
+
+def hum_status(h):
+    if TH["hum_ok_low"] <= h <= TH["hum_ok_high"]:
+        return "ok", "●"
+    sym   = "▼" if h < TH["hum_ok_low"] else "▲"
+    color = "warn" if TH["hum_dry_low"] <= h <= TH["hum_wet_high"] else "bad"
+    return color, sym
+
+def bat_status(v):
+    if v > TH["bat_ok"]:   return "ok",   "●"
+    if v > TH["bat_warn"]: return "warn", "▼"
+    return "bad", "▼"
+
+def sol_status(vs):
+    return ("ok", "●") if vs > 0 else ("off", "○")
+
+# -- main data assembler -----------------------------------------------------
+
 def brief_data(fname):
     """Load latest reading + device params for a single sensor.
     Returns a dict with all fields needed by index.html and graph.html:
@@ -134,76 +189,42 @@ def brief_data(fname):
     device config (fw, sensor, gpio pins), and display helpers (low_bat, period)."""
     with get_db(fname) as db:
         # Latest sensor reading (local time for display, UTC for age calc)
-        row   = db.execute("""SELECT round(temperature,1) AS temperature,
-                      round(humidity,1) AS humidity,
-                      round(pressure,1) AS pressure,
-                      round(voltage,2) AS voltage,
-                      round(voltagesun,2) AS voltagesun,
-                      ip, message, datetime(timedate,'localtime') AS tztime,
-                      timedate
-                      FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
-        maxv  = max_voltages(db)
-        # Device config params (fw type, sensor, gpio, thresholds, etc.)
-        params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
-        # Weather forecast from pressure/humidity trends
+        row = db.execute("""SELECT round(temperature,1) AS temperature,
+                                   round(humidity,1) AS humidity,
+                                   round(pressure,1) AS pressure,
+                                   round(voltage,2) AS voltage,
+                                   round(voltagesun,2) AS voltagesun,
+                                   ip, message, datetime(timedate,'localtime') AS tztime,
+                                   timedate
+                            FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
+        maxv     = max_voltages(db)
+        params   = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
         forecast = weather_forecast(db)
 
-    # Voltage: ESP-IDF sends real volts, MicroPython needs normalization
-    row["v"]   = round(row["voltage"]    / maxv["mv"]  * TH["nominal_battery_v"], 2) if maxv["mv"]  and row["voltage"]    and params.get("fw") != "espidf" else round(row["voltage"] or 0, 2)
-    row["vs"]  = round(row["voltagesun"] / maxv["mvs"] * TH["nominal_solar_v"], 2) if maxv["mvs"] and row["voltagesun"] and params.get("fw") != "espidf" else round(row["voltagesun"] or 0, 2)
-    row["mvs"] = maxv["mvs"]
-    row["raw_volts"] = params.get("fw") == "espidf"
+    espidf = is_espidf(params)
+
+    # Voltage normalization
+    row["v"]         = norm_voltage(row["voltage"],    maxv["mv"],  TH["nominal_battery_v"], espidf)
+    row["vs"]        = norm_voltage(row["voltagesun"], maxv["mvs"], TH["nominal_solar_v"],   espidf)
+    row["mvs"]       = maxv["mvs"]
+    row["raw_volts"] = espidf
 
     # Merge device params into row (fw, sensor, sleep, led, i2c_*, etc.)
     row.update(params)
     row.setdefault("name", "_new_")
 
-    # Calculate sleep period in seconds (for refresh timer and offline detection)
-    if params.get("fw") == "espidf":
-        # ESP-IDF: sleep value is in minutes (from menuconfig)
-        sleep_sec = int(row.get("sleep", 15)) * 60
-    else:
-        # MicroPython: sleep value is in milliseconds
-        sleep_ms = int(row.get("sleep", 900_000))
-        sleep_sec = sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
-    row["period"] = sleep_sec
-
-    # Time since last reading + offline detection (>2.5× sleep = offline)
+    # Timing: sleep period, age, offline (>2.5× sleep)
+    row["period"]     = sleep_seconds(params)
     row["ago"], delta = time_ago(row.get("timedate", ""))
-    row["offline"] = delta > sleep_sec * 2.5 if delta else False
+    row["offline"]    = delta > row["period"] * 2.5 if delta else False
 
-    # Low battery flag: voltage below threshold from device config (lowb in mV)
-    try:
-        lowb_v = int(row.get("lowb", 0)) / 1000.0
-        row["low_bat"] = lowb_v > 0 and row["v"] > 0 and row["v"] < lowb_v
-    except (ValueError, TypeError):
-        row["low_bat"] = False
-
-    # Color classes and indicator symbols for readings (● = ok, ▲ = high, ▼ = low)
-    t = row["temperature"] or 0
-    row["temp_color"] = "cold" if t < TH["temp_cold"] else ("hot" if t > TH["temp_hot"] else "ok")
-    row["temp_sym"]   = "▼" if t < TH["temp_cold"] else ("▲" if t > TH["temp_hot"] else "●")
-
-    h = row["humidity"] or 0
-    if TH["hum_ok_low"] <= h <= TH["hum_ok_high"]:
-        row["hum_color"], row["hum_sym"] = "ok", "●"
-    elif TH["hum_dry_low"] <= h <= TH["hum_wet_high"]:
-        row["hum_color"] = "warn"
-        row["hum_sym"]   = "▼" if h < TH["hum_ok_low"] else "▲"
-    else:
-        row["hum_color"] = "bad"
-        row["hum_sym"]   = "▼" if h < TH["hum_ok_low"] else "▲"
-
-    v = row["v"] or 0
-    row["bat_color"] = "ok" if v > TH["bat_ok"] else ("warn" if v > TH["bat_warn"] else "bad")
-    row["bat_sym"]   = "●" if v > TH["bat_ok"] else "▼"
-
-    vs = row["vs"] or 0
-    row["sol_color"] = "ok" if vs > 0 else "off"
-    row["sol_sym"]   = "●" if vs > 0 else "○"
-
-    # Weather forecast (only for sensors with pressure)
-    row["forecast"] = forecast
+    # Status flags & display tuples
+    row["low_bat"]                     = is_low_bat(row["v"], params)
+    row["temp_color"], row["temp_sym"] = temp_status(row["temperature"] or 0)
+    row["hum_color"],  row["hum_sym"]  = hum_status(row["humidity"] or 0)
+    row["bat_color"],  row["bat_sym"]  = bat_status(row["v"] or 0)
+    row["sol_color"],  row["sol_sym"]  = sol_status(row["vs"] or 0)
+    row["forecast"]                    = forecast
 
     return row
 
@@ -267,7 +288,7 @@ async def csv_get(request):
     startdate, enddate = get_range(request)
     with get_db(db_path(cfg(request), sid(request))) as db:
         params = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
-        if params.get("fw") == "espidf":
+        if is_espidf(params):
             v, vs = 1, 1  # raw volts, no normalization needed
         else:
             maxv = max_voltages(db)
