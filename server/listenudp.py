@@ -20,6 +20,7 @@ llg  = logging.getLogger(__name__)
 last = {}        # {topic: last_value} — for deduplication of identical packets
 last_store = {}  # {device_id: timestamp} — to prevent duplicate readings within time window
 dev_names = {}   # {device_id: name} — cached device names for logging
+db_init = set()  # set of device_ids with initialized tables (skip CREATE TABLE IF EXISTS)
 DEDUP_WINDOW = 30  # seconds — ignore readings from same device within this window
 cfg  = None
 
@@ -42,6 +43,28 @@ def db_path(wid):   return f"{cfg['dbdir']}/{wid}.sqlite3"
 def get_db(wid):
     dbh = sqlite3.connect(db_path(wid))
     return dbh, dbh.cursor()
+
+def ensure_tables(c, wid):
+    """Create tables on first access per device, skip on subsequent calls."""
+    if wid in db_init:
+        return
+    c.execute("""CREATE TABLE IF NOT EXISTS data (
+                    timedate text primary key, ip text,
+                    temperature real, humidity real, pressure real,
+                    voltage real, voltagesun real, message text)""")
+    c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
+    db_init.add(wid)
+
+def get_dev_label(wid, c=None):
+    """Get 'wid (name)' label for logging. Reads name from cache or DB."""
+    name = dev_names.get(wid)
+    if not name and c:
+        try:
+            row = c.execute("SELECT value FROM params WHERE name='name'").fetchone()
+            if row: name = dev_names[wid] = row[0]
+        except Exception:
+            pass
+    return f"{wid} ({name})" if name else wid
 
 def recv_packet(pkt):
     """Callback for each MQTT-UDP packet. Filters by type, deduplicates,
@@ -69,19 +92,18 @@ def store_conf(wid, data):
     determine firmware type, GPIO pins, sensor type, thresholds, etc."""
     parsed = json.loads(data)
     dbh, c = get_db(wid)
+    ensure_tables(c, wid)
     for k, v in parsed.items():
         c.execute("INSERT OR REPLACE INTO params (name, value) VALUES (?,?)", (k, v))
     dbh.commit()
-    # Load device name from DB and cache it
+    # Cache device name from DB
     try:
         row = c.execute("SELECT value FROM params WHERE name='name'").fetchone()
         if row: dev_names[wid] = row[0]
     except Exception:
         pass
     dbh.close()
-    name = dev_names.get(wid)
-    label = f"{wid} ({name})" if name else wid
-    llg.info(f"CONF: {label} {parsed}")
+    llg.info(f"CONF: {get_dev_label(wid)} {parsed}")
 
 def store(wid, data, ip):
     """Save sensor reading to the 'data' table.
@@ -91,7 +113,7 @@ def store(wid, data, ip):
         Broadcast duplicates are handled by INSERT OR REPLACE (same ts = same PK).
       - If no 'ts' (ESP-IDF firmware) → use server UTC time.
         Dedup window prevents broadcast duplicates from creating multiple rows.
-    Creates tables on first insert for new devices."""
+    """
     ddata = {**json.loads(data), 'ip': ip}
 
     # Determine timestamp: device ts (MicroPython) or server UTC (ESP-IDF)
@@ -109,26 +131,13 @@ def store(wid, data, ip):
         last_store[wid] = now
         ddata['ts'] = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Get device name for logging (from cache or DB)
-    name = dev_names.get(wid)
-    if not name:
-        try:
-            dbh0, c0 = get_db(wid)
-            row0 = c0.execute("SELECT value FROM params WHERE name='name'").fetchone()
-            if row0: name = dev_names[wid] = row0[0]
-            dbh0.close()
-        except Exception:
-            pass
-    label = f"{wid} ({name})" if name else wid
-    llg.info(f"WID: {label} JSON: {ddata}")
     dbh, c = get_db(wid)
-    c.execute("""CREATE TABLE IF NOT EXISTS data (
-                    timedate text primary key, ip text,
-                    temperature real, humidity real, pressure real,
-                    voltage real, voltagesun real, message text)""")
-    c.execute("CREATE TABLE IF NOT EXISTS params (name text primary key, value text)")
-    # Save device MAC as param (useful for display and identification)
-    c.execute("INSERT OR REPLACE INTO params (name, value) VALUES ('device_id', ?)", (wid,))
+    ensure_tables(c, wid)
+    # Save device_id to params once (on first store for this device)
+    if wid not in dev_names:
+        c.execute("INSERT OR REPLACE INTO params (name, value) VALUES ('device_id', ?)", (wid,))
+    label = get_dev_label(wid, c)
+    llg.info(f"WID: {label} JSON: {ddata}")
     ddata = {f: ddata.get(f) for f in DB_FIELDS}
     c.execute("""INSERT OR REPLACE INTO data
                     (timedate,ip,temperature,humidity,pressure,voltage,voltagesun,message)
