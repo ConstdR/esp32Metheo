@@ -268,6 +268,7 @@ async def graph(request):
     # refreshtime = half the sleep period (page reloads between measurements)
     info |= {"id": sid(request), "refreshtime": int(info["period"] / 2), "th": TH}
     info["startdate"], info["enddate"] = get_range(request)
+    info["s"] = info
     return html(tmpl("graph.html").render(info))
 
 async def index(request):
