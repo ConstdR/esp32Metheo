@@ -18,7 +18,7 @@
 <div class="header">
   <a href="/">← Home</a>
   <form method="GET" style="display:contents">
-    <span class="station-name" id="espwname" onclick="startRename()">{{name}}</span>
+    <span class="station-name" id="espwname">{{name}}</span>
     <span class="rename-form" id="espwrename">
       <input type=text name="rename" value="{{name}}">
       <input type="submit" value="OK">
@@ -138,10 +138,10 @@
   makeDg("solar", [false,false,false,false,true], "#8080f0");
   {% endif %}
 
-  function startRename() {
+  document.getElementById("espwname").addEventListener("click", function() {
     document.getElementById("espwname").style.display   = "none";
     document.getElementById("espwrename").style.display = "inline";
-  }
+  });
   var countdownSec = {{refreshtime}};
   function fmtCountdown(s) {
     if (s <= 0) return "⟳";
