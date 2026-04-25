@@ -9,6 +9,7 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
          background: #f0f2f5; padding: 20px }
   h1 { color: #333; margin-bottom: 20px; font-size: 22px }
+  .countdown { color: #aaa; font-size: 13px; margin-left: 12px; font-weight: 400 }
   .cards { display: flex; flex-wrap: wrap; gap: 16px }
   .card { background: #fff; border-radius: 12px; padding: 20px; width: 320px;
           box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: box-shadow 0.2s;
@@ -44,7 +45,7 @@
 </style>
 </head>
 <body>
-<h1>&#9729; Weather Stations</h1>
+<h1>&#9729; Weather Stations <span class="countdown" id="countdown"></span></h1>
 <div class="cards">
 {% for id in sensors %}{% set s = sensors[id] %}
 <a href="graph/{{id}}" class="card{% if s.offline %} offline{% endif %}">
@@ -91,5 +92,19 @@
 </a>
 {% endfor %}
 </div>
+<script>
+  var countdownSec = {{refreshtime}};
+  function fmtCountdown(s) {
+    if (s <= 0) return "⟳";
+    var m = Math.floor(s / 60), ss = s % 60;
+    return "⟳ " + m + ":" + (ss < 10 ? "0" : "") + ss;
+  }
+  var cdEl = document.getElementById("countdown");
+  cdEl.textContent = fmtCountdown(countdownSec);
+  setInterval(function(){
+    countdownSec--;
+    cdEl.textContent = fmtCountdown(countdownSec);
+  }, 1000);
+</script>
 </body>
 </html>

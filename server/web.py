@@ -235,9 +235,13 @@ async def graph(request):
     path = db_path(cfg(request), sid(request))
     if not os.path.isfile(path): raise web.HTTPNotFound(text="Not here.")
     if "rename" in request.query:
+        new_name = request.query["rename"]
         with sqlite3.connect(path) as db:
-            db.execute("INSERT OR REPLACE INTO params VALUES(?,?)", ("name", request.query["rename"]))
+            old = db.execute("SELECT value FROM params WHERE name='name'").fetchone()
+            old_name = old[0] if old else "_unnamed_"
+            db.execute("INSERT OR REPLACE INTO params VALUES(?,?)", ("name", new_name))
             db.commit()
+        lg.info(f"Rename {sid(request)}: '{old_name}' → '{new_name}'")
         raise web.HTTPFound(location=f"/graph/{sid(request)}")
     info = brief_data(path)
     # refreshtime = half the sleep period (page reloads between measurements)
@@ -252,7 +256,9 @@ async def index(request):
         if not name.endswith(".sqlite3"): continue
         try:    sensors[name.removesuffix(".sqlite3")] = brief_data(os.path.join(cfg(request)["dbdir"], name))
         except Exception as e: lg.error(f"Bad data in {name}: {e}")
-    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": 450}))
+    # Refresh = half of shortest sleep period among sensors (default 450s if none)
+    refresh = min((s["period"] for s in sensors.values() if s.get("period")), default=900) // 2
+    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": max(refresh, 30)}))
 
 async def csv_get(request):
     """CSV data for dygraph charts. Columns: time, temperature, humidity,
