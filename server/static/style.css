@@ -1,0 +1,101 @@
+/* ESP32 Weather Station — shared styles for index.html and graph.html */
+
+/* ── Base ── */
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+       background: #f0f2f5; padding: 20px; color: #333 }
+h1 { color: #333; margin-bottom: 20px; font-size: 22px }
+
+/* ── Reading tile (used in index cards and graph current panel) ── */
+.reading { padding: 8px; border-radius: 8px; background: #f8f9fa }
+.reading .value { font-size: 24px; font-weight: 700 }
+.reading .label { font-size: 11px; color: #888; letter-spacing: 0.5px;
+                  margin-bottom: 2px }
+.r-temp.cold .value { color: #1565c0 }
+.r-temp.ok   .value { color: #2e7d32 }
+.r-temp.hot  .value { color: #c62828 }
+.r-hum.ok   .value { color: #2e7d32 }
+.r-hum.warn .value { color: #e65100 }
+.r-hum.bad  .value { color: #c62828 }
+.r-pres .value { color: #800080 }
+.r-bat.ok   .value { color: #2e7d32 }
+.r-bat.warn .value { color: #e65100 }
+.r-bat.bad  .value { color: #c62828 }
+.r-sol.ok  .value { color: #e65100 }
+.r-sol.off .value { color: #aaa }
+
+/* ── Forecast badge ── */
+.forecast-detail { font-size: 11px; font-weight: 400; color: #aaa }
+
+/* ── Countdown timer (top-right of index, in controls bar of graph) ── */
+.countdown { color: #aaa; font-size: 13px }
+
+/* ── Offline marker ── */
+.offline-badge { color: #c00; font-weight: 700 }
+
+/* =============================================================
+ * INDEX page
+ * ============================================================= */
+.cards { display: flex; flex-wrap: wrap; gap: 16px }
+.card { background: #fff; border-radius: 12px; padding: 20px; width: 320px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: box-shadow 0.2s;
+        text-decoration: none; color: inherit; display: block }
+.card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15) }
+.card.offline { opacity: 0.5 }
+.card-header { display: flex; justify-content: space-between; align-items: center;
+               margin-bottom: 14px }
+.card-name { font-size: 18px; font-weight: 700; color: #333 }
+.card-status { font-size: 11px; color: #999 }
+.card .readings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+.card-forecast { margin-top: 10px; font-size: 15px; font-weight: 600; color: #555 }
+.card-footer { margin-top: 12px; font-size: 11px; color: #aaa; display: flex;
+               justify-content: space-between }
+/* index countdown sits next to h1 */
+h1 .countdown { margin-left: 12px; font-weight: 400 }
+
+/* =============================================================
+ * GRAPH page
+ * ============================================================= */
+/* Header */
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap }
+.header a { color: #888; text-decoration: none; font-size: 14px }
+.header a:hover { color: #333 }
+.station-name { font-size: 22px; font-weight: 700; cursor: pointer }
+.station-name:hover { color: #2196F3 }
+.station-time { color: #888; font-size: 14px }
+.station-forecast { font-size: 15px; font-weight: 600; color: #555 }
+.rename-form { display: none }
+.rename-form input[type=text] { font-size: 16px; padding: 4px 8px; border: 2px solid #2196F3;
+  border-radius: 6px; width: 200px }
+.rename-form input[type=submit] { font-size: 14px; padding: 4px 12px; background: #2196F3;
+  color: #fff; border: none; border-radius: 6px; cursor: pointer }
+
+/* Current readings panel (overrides .reading sizing for the larger panel) */
+.current { background: #fff; border-radius: 12px; padding: 20px;
+           box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px }
+.current .readings { display: flex; gap: 12px; flex-wrap: wrap }
+.current .reading { padding: 12px 20px; min-width: 120px }
+.current .reading .value { font-size: 32px }
+
+/* Date range + countdown bar */
+.controls { background: #fff; border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px;
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap }
+.controls .countdown { min-width: 30px }
+#dates { font-size: 15px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px;
+         width: 240px }
+
+/* Graphs */
+.graph-section { background: #fff; border-radius: 12px; padding: 16px 20px;
+                 box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px;
+                 position: relative; overflow: visible }
+.graph-section .graph-label { font-size: 13px; font-weight: 600; color: #888;
+                              margin-bottom: 8px; letter-spacing: 0.5px }
+.graph-container { width: 100%; height: 250px; position: relative }
+.dygraph-legend { background: rgba(255,255,255,0.9) !important; padding: 4px 8px !important;
+                  border-radius: 4px; font-size: 12px !important; pointer-events: none;
+                  white-space: nowrap }
+
+/* Footer */
+.footer { color: #aaa; font-size: 11px; font-family: monospace; line-height: 1.8;
+          margin-top: 8px; padding: 0 4px }

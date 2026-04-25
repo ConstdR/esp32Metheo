@@ -1,0 +1,30 @@
+{# Readings tiles — used by index.html (per-card) and graph.html (current panel).
+   Pass a dict with: temperature, humidity, pressure, v, vs, mvs,
+   temp_color, temp_sym, hum_color, hum_sym, bat_color, bat_sym,
+   sol_color, sol_sym, low_bat. #}
+{% macro readings(s) %}
+<div class="reading r-temp {{s.temp_color}}">
+  <div class="label">🌡 Temperature</div>
+  <div class="value">{{s.temp_sym}} {{s.temperature}}°</div>
+</div>
+<div class="reading r-hum {{s.hum_color}}">
+  <div class="label">💧 Humidity</div>
+  <div class="value">{{s.hum_sym}} {{s.humidity}}%</div>
+</div>
+{% if s.pressure %}
+<div class="reading r-pres">
+  <div class="label">🔵 Pressure, hPa</div>
+  <div class="value">{{s.pressure}}</div>
+</div>
+{% endif %}
+<div class="reading r-bat {{s.bat_color}}">
+  <div class="label">🔋 Battery{% if s.low_bat %} ⚠{% endif %}</div>
+  <div class="value">{{s.bat_sym}} {{s.v}}V</div>
+</div>
+{% if s.mvs %}
+<div class="reading r-sol {{s.sol_color}}">
+  <div class="label">☀ Solar</div>
+  <div class="value">{{s.sol_sym}} {{s.vs}}V</div>
+</div>
+{% endif %}
+{% endmacro %}

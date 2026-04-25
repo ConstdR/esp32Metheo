@@ -157,18 +157,7 @@
 </script>
 
 <!-- Footer -->
-<div class="footer">
-  {% if fw %}
-  <b>{{fw}}</b> · sensor: {{sensor}} · sleep: {{sleep}}min
-  · LED: GPIO{{led}}{% if led_inv == '1' %} (inv){% endif %}
-  · I2C: SDA={{i2c_sda}} SCL={{i2c_scl}}
-  · BAT: GPIO{{bat_gpio}}{% if lowb %} low&lt;{{(lowb|int/1000)|round(1)}}V{% endif %}
-  {% if solar == '1' %}· SOL: GPIO{{sol_gpio}}{% endif %}
-  {% if rst %}· rst: {{rst}}{% endif %}
-  ·
-  {% endif %}
-  IP: {{ip}}{% if device_id %} · ID: {{device_id}}{% endif %}
-</div>
+<div class="footer">{{ device_summary|safe }}</div>
 {% if message %}<div class="footer" style="font-style:italic">{{message}}</div>{% endif %}
 
 </body>

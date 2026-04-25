@@ -180,6 +180,33 @@ def bat_status(v):
 def sol_status(vs):
     return ("ok", "●") if vs > 0 else ("off", "○")
 
+def device_summary(d):
+    """Build HTML summary string for graph footer (hardware/firmware config + IP + ID).
+    d is the merged dict (latest data row + device params from brief_data()).
+    Mirrors the original {% if fw %}{% endif %} template block as one rendered string."""
+    parts = []
+    if d.get("fw"):
+        parts.append(f"<b>{d['fw']}</b>")
+        parts.append(f"sensor: {d.get('sensor', '')}")
+        parts.append(f"sleep: {d.get('sleep', '')}min")
+        led = f"LED: GPIO{d.get('led', '')}"
+        if d.get("led_inv") == "1": led += " (inv)"
+        parts.append(led)
+        parts.append(f"I2C: SDA={d.get('i2c_sda', '')} SCL={d.get('i2c_scl', '')}")
+        bat = f"BAT: GPIO{d.get('bat_gpio', '')}"
+        if d.get("lowb"):
+            try:
+                bat += f" low&lt;{round(int(d['lowb']) / 1000, 1)}V"
+            except (ValueError, TypeError):
+                pass
+        parts.append(bat)
+        if d.get("solar") == "1": parts.append(f"SOL: GPIO{d.get('sol_gpio', '')}")
+        if d.get("rst"):          parts.append(f"rst: {d['rst']}")
+    parts.append(f"IP: {d.get('ip', '')}")
+    if d.get("device_id"):
+        parts.append(f"ID: {d['device_id']}")
+    return " · ".join(parts)
+
 # -- main data assembler -----------------------------------------------------
 
 def brief_data(fname):
@@ -225,6 +252,7 @@ def brief_data(fname):
     row["bat_color"],  row["bat_sym"]  = bat_status(row["v"] or 0)
     row["sol_color"],  row["sol_sym"]  = sol_status(row["vs"] or 0)
     row["forecast"]                    = forecast
+    row["device_summary"]              = device_summary(row)
 
     return row
 
