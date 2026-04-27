@@ -199,6 +199,14 @@ def sleep_seconds(params):
     sleep_ms = int(params.get("sleep", 900_000))
     return sleep_ms / 1000 if sleep_ms > 1000 else sleep_ms
 
+def next_refresh(period, age, buffer=30, min_refresh=60):
+    """Seconds until next page reload, aimed to land 'buffer' seconds after
+    the next expected sensor reading (last_ts + period + buffer).
+    Falls back to min_refresh if period/age unknown or data is overdue."""
+    if not period or not age:
+        return min_refresh
+    return max(int(period - age + buffer), min_refresh)
+
 def is_low_bat(v, params):
     """True if voltage below device-configured 'lowb' threshold (stored in mV)."""
     try:
@@ -293,10 +301,10 @@ def brief_data(fname, dbdir=None):
     row.update(params)
     row.setdefault("name", "_new_")
 
-    # Timing: sleep period, age, offline (>2.5× sleep)
-    row["period"]     = sleep_seconds(params)
-    row["ago"], delta = time_ago(row.get("timedate", ""))
-    row["offline"]    = delta > row["period"] * 2.5 if delta else False
+    # Timing: sleep period, age (seconds since last reading), offline (>2.5× sleep)
+    row["period"]        = sleep_seconds(params)
+    row["ago"], row["age"] = time_ago(row.get("timedate", ""))
+    row["offline"]       = row["age"] > row["period"] * 2.5 if row["age"] else False
 
     # Status flags & display tuples
     row["low_bat"]                     = is_low_bat(row["v"], params)
@@ -346,8 +354,8 @@ async def graph(request):
         lg.info(f"Rename {sid(request)}: '{old_name}' → '{new_name}'")
         raise web.HTTPFound(location=f"/graph/{sid(request)}")
     info = brief_data(path, cfg(request)["dbdir"])
-    # refreshtime = half the sleep period (page reloads between measurements)
-    info |= {"id": sid(request), "refreshtime": int(info["period"] / 2), "th": TH}
+    # Refresh = time until next expected reading (last_ts + period + buffer)
+    info |= {"id": sid(request), "refreshtime": next_refresh(info["period"], info["age"]), "th": TH}
     info["startdate"], info["enddate"] = get_range(request)
     info["s"] = info
     return html(tmpl("graph.html").render(info))
@@ -360,9 +368,12 @@ async def index(request):
         if not name.endswith(".sqlite3"): continue
         try:    sensors[name.removesuffix(".sqlite3")] = brief_data(os.path.join(dbdir, name), dbdir)
         except Exception as e: lg.error(f"Bad data in {name}: {e}")
-    # Refresh = half of shortest sleep period among sensors (default 450s if none)
-    refresh = min((s["period"] for s in sensors.values() if s.get("period")), default=900) // 2
-    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": max(refresh, 120)}))
+    # Refresh = time until earliest next expected reading among online sensors
+    candidates = [next_refresh(s["period"], s["age"])
+                  for s in sensors.values()
+                  if s.get("period") and not s.get("offline")]
+    refresh = min(candidates) if candidates else 120
+    return html(tmpl("index.html").render({"sensors": sensors, "refreshtime": refresh}))
 
 async def csv_get(request):
     """CSV data for dygraph charts. Columns: time, temperature, humidity,
