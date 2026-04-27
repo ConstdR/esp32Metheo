@@ -87,11 +87,54 @@ def time_ago(utc_str):
     except Exception:
         return "", 0
 
-def weather_forecast(db):
+def area_pressure_trend(dbdir):
+    """Compute average per-device pressure delta over last 6 hours, across all
+    devices in dbdir that have a pressure sensor and recent data. Per-device
+    deltas (now - ago) are computed first, then averaged — this cancels out
+    individual sensor calibration offsets.
+
+    Used as forecast fallback for sensors without pressure (e.g. SHT30).
+    Only devices with a 'now' reading within last 2 hours contribute, so
+    long-offline devices don't pollute the trend.
+
+    Returns dict with 'p_diff', 'p_rate' (hPa/h), 'h_diff', 'sources' (count),
+    or None if no usable data.
+    """
+    deltas_p, deltas_h = [], []
+    for name in os.listdir(dbdir):
+        if not name.endswith(".sqlite3"): continue
+        try:
+            with get_db(os.path.join(dbdir, name)) as db:
+                now = db.execute("""SELECT pressure, humidity FROM data
+                                   WHERE pressure IS NOT NULL AND pressure != 'None' AND pressure > 0
+                                     AND timedate > datetime('now', '-2 hours')
+                                   ORDER BY timedate DESC LIMIT 1""").fetchone()
+                ago = db.execute("""SELECT avg(pressure) AS pressure, avg(humidity) AS humidity FROM data
+                                   WHERE pressure IS NOT NULL AND pressure != 'None' AND pressure > 0
+                                     AND timedate > datetime('now', '-6.5 hours')
+                                     AND timedate < datetime('now', '-5.5 hours')""").fetchone()
+            if not now or not ago or not ago["pressure"]: continue
+            deltas_p.append(now["pressure"] - ago["pressure"])
+            deltas_h.append((now["humidity"] or 0) - (ago["humidity"] or 0))
+        except Exception:
+            continue
+    if not deltas_p:
+        return None
+    n = len(deltas_p)
+    p_diff = sum(deltas_p) / n
+    return {"p_diff": p_diff, "p_rate": p_diff / 6.0,
+            "h_diff": sum(deltas_h) / n, "sources": n}
+
+
+def weather_forecast(db, dbdir=None):
     """Simple weather forecast based on pressure and humidity trends over 6 hours.
-    Returns dict with 'icon', 'text', and 'detail' (rate of change)."""
+    Returns dict with 'icon', 'text', and 'detail' (rate of change).
+
+    If the device has no pressure data (e.g. SHT30 sensor) and dbdir is given,
+    falls back to area-wide pressure trend computed from neighboring devices.
+    """
     try:
-        # Get pressure and humidity from 6 hours ago and now
+        # Try local pressure first
         now = db.execute("""SELECT pressure, humidity FROM data
                            WHERE pressure IS NOT NULL AND pressure != 'None' AND pressure > 0
                            ORDER BY timedate DESC LIMIT 1""").fetchone()
@@ -99,16 +142,23 @@ def weather_forecast(db):
                            WHERE pressure IS NOT NULL AND pressure != 'None' AND pressure > 0
                              AND timedate > datetime('now', '-6.5 hours')
                              AND timedate < datetime('now', '-5.5 hours')""").fetchone()
-        if not now or not ago or not ago["pressure"]:
+
+        if now and ago and ago["pressure"]:
+            p_diff = now["pressure"] - ago["pressure"]
+            p_rate = p_diff / 6.0
+            h_diff = (now["humidity"] or 0) - (ago["humidity"] or 0)
+            source_suffix = ""
+        elif dbdir:
+            # Fallback: area-wide pressure trend (per-device deltas averaged)
+            area = area_pressure_trend(dbdir)
+            if not area:
+                return {"icon": "", "text": "", "detail": ""}
+            p_diff, p_rate, h_diff = area["p_diff"], area["p_rate"], area["h_diff"]
+            source_suffix = f" (area, {area['sources']} src)"
+        else:
             return {"icon": "", "text": "", "detail": ""}
 
-        p_now, p_ago = now["pressure"], ago["pressure"]
-        h_now, h_ago = now["humidity"] or 0, ago["humidity"] or 0
-        p_diff = p_now - p_ago          # positive = rising
-        p_rate = p_diff / 6.0           # hPa per hour
-        h_diff = h_now - h_ago          # positive = getting wetter
-
-        # Forecast logic
+        # Forecast logic (same for local and area-wide)
         if p_rate < TH["forecast_storm"]:
             icon, text = "⛈", "Storm warning"
         elif p_rate < TH["forecast_storm"] / 2 and h_diff > TH["forecast_rain_hum_diff"]:
@@ -122,7 +172,7 @@ def weather_forecast(db):
         else:
             icon, text = "●", "Steady"
 
-        detail = f"{p_diff:+.1f} hPa/6h ({p_rate:+.2f}/h)"
+        detail = f"{p_diff:+.1f} hPa/6h ({p_rate:+.2f}/h){source_suffix}"
         return {"icon": icon, "text": text, "detail": detail}
     except Exception:
         return {"icon": "", "text": "", "detail": ""}
@@ -209,11 +259,14 @@ def device_summary(d):
 
 # -- main data assembler -----------------------------------------------------
 
-def brief_data(fname):
+def brief_data(fname, dbdir=None):
     """Load latest reading + device params for a single sensor.
     Returns a dict with all fields needed by index.html and graph.html:
     temperature, humidity, pressure, voltage (v/vs), timing (ago, offline),
-    device config (fw, sensor, gpio pins), and display helpers (low_bat, period)."""
+    device config (fw, sensor, gpio pins), and display helpers (low_bat, period).
+
+    If dbdir is given and the device has no pressure data, weather_forecast
+    will fall back to area-wide pressure trend from neighboring devices."""
     with get_db(fname) as db:
         # Latest sensor reading (local time for display, UTC for age calc)
         row = db.execute("""SELECT round(temperature,1) AS temperature,
@@ -226,7 +279,7 @@ def brief_data(fname):
                             FROM data ORDER BY timedate DESC LIMIT 1""").fetchone()
         maxv     = max_voltages(db)
         params   = {r["name"]: r["value"] for r in db.execute("SELECT name,value FROM params").fetchall()}
-        forecast = weather_forecast(db)
+        forecast = weather_forecast(db, dbdir)
 
     espidf = is_espidf(params)
 
@@ -292,7 +345,7 @@ async def graph(request):
             db.commit()
         lg.info(f"Rename {sid(request)}: '{old_name}' → '{new_name}'")
         raise web.HTTPFound(location=f"/graph/{sid(request)}")
-    info = brief_data(path)
+    info = brief_data(path, cfg(request)["dbdir"])
     # refreshtime = half the sleep period (page reloads between measurements)
     info |= {"id": sid(request), "refreshtime": int(info["period"] / 2), "th": TH}
     info["startdate"], info["enddate"] = get_range(request)
@@ -302,9 +355,10 @@ async def graph(request):
 async def index(request):
     """Main page: card for each sensor with current readings."""
     sensors = {}
-    for name in os.listdir(cfg(request)["dbdir"]):
+    dbdir = cfg(request)["dbdir"]
+    for name in os.listdir(dbdir):
         if not name.endswith(".sqlite3"): continue
-        try:    sensors[name.removesuffix(".sqlite3")] = brief_data(os.path.join(cfg(request)["dbdir"], name))
+        try:    sensors[name.removesuffix(".sqlite3")] = brief_data(os.path.join(dbdir, name), dbdir)
         except Exception as e: lg.error(f"Bad data in {name}: {e}")
     # Refresh = half of shortest sleep period among sensors (default 450s if none)
     refresh = min((s["period"] for s in sensors.values() if s.get("period")), default=900) // 2
