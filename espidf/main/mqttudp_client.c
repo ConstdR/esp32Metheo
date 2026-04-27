@@ -155,6 +155,7 @@ void mqttudp_send_config(const char *device_id, const char *sensor_name,
 #endif
         "\"i2c_sda\":%d,"
         "\"i2c_scl\":%d,"
+        "\"i2c_freq\":%d,"
         "\"bat_gpio\":%d,"
         "\"lowb\":%d"
 #if CONFIG_SOLAR_ENABLED
@@ -169,6 +170,7 @@ void mqttudp_send_config(const char *device_id, const char *sensor_name,
         CONFIG_LED_GPIO,
         CONFIG_I2C_SDA_GPIO,
         CONFIG_I2C_SCL_GPIO,
+        CONFIG_I2C_FREQ_HZ,
         CONFIG_BATTERY_ADC_GPIO,
         CONFIG_LOW_BATTERY_MV
 #if CONFIG_SOLAR_ENABLED
