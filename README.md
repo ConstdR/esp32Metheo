@@ -1,4 +1,4 @@
-# ESP32 Weather Station
+ESP32 Weather Station
 
 Weather station based on ESP32 with BME280 or SHT30 sensor. Measures temperature,
 humidity, pressure (BME280 only) and battery voltage. Data is sent over local network
