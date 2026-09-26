@@ -18,7 +18,7 @@ Voltage normalization:
   - MicroPython firmware sends raw ADC values → normalized using max-based scaling
 """
 
-import argparse, configparser, logging, os, re, sqlite3, sys
+import argparse, asyncio, configparser, logging, os, re, sqlite3, sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from multiprocessing import Process
@@ -414,10 +414,22 @@ def main():
     logging.basicConfig(level=c["debug"],
                         format="%(asctime)s %(name)s.%(lineno)s %(levelname)s: %(message)s")
     # Start UDP listener in a separate process
-    Process(target=listenudp.main).start()
+    listener = Process(target=listenudp.main); listener.start()
+
+    async def watch_listener(app):
+        """Exit the whole process if the listener dies, so the container
+        restart policy brings everything back instead of a zombie."""
+        while True:
+            await asyncio.sleep(30)
+            if not listener.is_alive():
+                lg.critical(f"UDP listener process died (exit {listener.exitcode}), exiting")
+                os._exit(1)
+
+    async def start_watch(app): app["watch"] = asyncio.create_task(watch_listener(app))
     # Start web server
     app = web.Application()
     app["cfg"] = c
+    app.on_startup.append(start_watch)
     app.add_routes([web.get("/", index), web.get(r"/csv/{id}", csv_get),
                     web.get(r"/graph/{id}", graph), web.post(r"/id/{id}", store),
                     web.get("/favicon.ico", favicon), web.static("/static", "static")])

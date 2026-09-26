@@ -36,7 +36,13 @@ def main():
     config.read(parser.parse_args().config)
     cfg = config['listener']
     llg.setLevel(cfg['debug'])
-    me.listen(recv_packet)
+    llg.warning("UDP listener starting")
+    try:
+        me.listen(recv_packet)
+    except BaseException:
+        llg.exception("UDP listener died")
+        raise
+    llg.error("UDP listener returned unexpectedly")
 
 def db_path(wid):   return f"{cfg['dbdir']}/{wid}.sqlite3"
 
