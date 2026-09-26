@@ -368,6 +368,8 @@ async def index(request):
         if not name.endswith(".sqlite3"): continue
         try:    sensors[name.removesuffix(".sqlite3")] = brief_data(os.path.join(dbdir, name), dbdir)
         except Exception as e: lg.error(f"Bad data in {name}: {e}")
+    # Cards sorted by station name (os.listdir order is filesystem-dependent)
+    sensors = dict(sorted(sensors.items(), key=lambda kv: kv[1].get("name", "").lower()))
     # Refresh = time until earliest next expected reading among online sensors
     candidates = [next_refresh(s["period"], s["age"])
                   for s in sensors.values()
