@@ -35,6 +35,10 @@ def main():
     config = configparser.ConfigParser()
     config.read(parser.parse_args().config)
     cfg = config['listener']
+    # Configure logging here too: with the forkserver/spawn start method
+    # (Python >= 3.14 default) the child does not inherit the parent's setup.
+    logging.basicConfig(level=cfg['debug'],
+                        format="%(asctime)s %(name)s.%(lineno)s %(levelname)s: %(message)s")
     llg.setLevel(cfg['debug'])
     llg.warning("UDP listener starting")
     try:
