@@ -285,3 +285,16 @@ dbdir = ./
 * Responsive design, works on mobile
 
 More info: [MQTT-UDP](https://mqtt-udp.readthedocs.io/en/latest/)
+
+## Collector-only on homevm (2026-09-29)
+
+The container runs `listenudp.py` alone; `web.py` and port 8088 are gone.
+The one feature the aiohttp UI had over the HomeWeb viewer, renaming a
+station, now lives in HomeWeb `cgi/meteo`: click the station name on the
+graph page. Container:
+
+    docker run -d --name espMetheo --network host --restart always \
+      -v /data/esp32Metheo/server:/serv esp-metheo sh -c "exec ./listenudp.py"
+
+Logs go to `docker logs espMetheo` (the old `server/log` file is history).
+`web.py` stays in the repo for `make run` on a laptop, but nothing serves it.
